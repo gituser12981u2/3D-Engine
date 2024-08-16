@@ -1,0 +1,15 @@
+[package]
+name = "physics_engine"
+version = "0.1.0"
+edition = "2021"
+build = "build.rs"
+
+[dependencies]
+cocoa = "0.26.0"
+core-graphics = "0.24.0"
+metal = "0.29.0"
+num-traits = "0.2.19"
+objc = "0.2.7"
+
+[build-dependencies]
+
