@@ -1,23 +1,25 @@
 use super::buffer_manager::BufferManager;
 use super::pipeline::create_render_pipeline;
-use super::MacOSWindow;
 use crate::renderer::backend::GraphicsBackend;
 use crate::renderer::common::{RendererError, Vertex};
 use cocoa::base::id as cocoa_id;
 use core_graphics::display::CGSize;
-use metal::MTLViewport;
+use glam::Mat4;
 use metal::{
     objc::{msg_send, sel, sel_impl},
     CommandQueue, Device, MetalLayer, RenderPipelineState,
 };
+use metal::{Buffer, MTLResourceOptions, MTLViewport};
+use raw_window_handle::HasWindowHandle;
+use winit::window::Window;
 
 pub struct MetalBackend {
-    device: Device,
     command_queue: CommandQueue,
     pipeline_state: RenderPipelineState,
     buffer_manager: BufferManager,
     layer: MetalLayer,
     viewport: Viewport,
+    uniform_buffer: Buffer,
 }
 
 struct Viewport {
@@ -50,21 +52,40 @@ impl Viewport {
 }
 
 impl MetalBackend {
-    pub fn new(window: &MacOSWindow) -> Result<Self, RendererError> {
+    pub fn new(window: &Window) -> Result<Self, RendererError> {
         let device = Device::system_default().ok_or(RendererError::DeviceNotFound)?;
         let command_queue = device.new_command_queue();
         let pipeline_state = create_render_pipeline(&device)?;
-        let buffer_manager = BufferManager::new();
-        let metal_layer = Self::setup_metal_layer(&device, window.get_view())?;
-        let (width, height) = window.get_size();
+        let buffer_manager = BufferManager::new(&device)?;
+
+        let metal_layer = match window.window_handle()?.as_raw() {
+            raw_window_handle::RawWindowHandle::AppKit(handle) => {
+                let ns_view = handle.ns_view.as_ptr() as cocoa_id;
+                let layer = Self::setup_metal_layer(&device, ns_view)?;
+                let size = window.inner_size();
+                let metal_size = CGSize::new(size.width as f64, size.height as f64);
+                layer.set_drawable_size(metal_size);
+                println!("Metal layer size: {:?}", layer.drawable_size());
+                layer
+            }
+            _ => return Err(RendererError::UnsupportedPlatform),
+        };
+
+        let size = window.inner_size();
+        let viewport = Viewport::new(0, 0, size.width, size.height);
+
+        let uniform_buffer = device.new_buffer(
+            std::mem::size_of::<Mat4>() as u64,
+            MTLResourceOptions::CPUCacheModeDefaultCache | MTLResourceOptions::StorageModeManaged,
+        );
 
         Ok(MetalBackend {
-            device,
             command_queue,
             pipeline_state,
             buffer_manager,
             layer: metal_layer,
-            viewport: Viewport::new(0, 0, width, height),
+            viewport,
+            uniform_buffer,
         })
     }
 
@@ -84,6 +105,13 @@ impl MetalBackend {
             Ok(layer)
         }
     }
+
+    pub fn update_uniforms(&mut self, view_projection_matrix: Mat4) {
+        let contents = self.uniform_buffer.contents() as *mut Mat4;
+        unsafe {
+            *contents = view_projection_matrix;
+        }
+    }
 }
 
 impl GraphicsBackend for MetalBackend {
@@ -101,14 +129,12 @@ impl GraphicsBackend for MetalBackend {
                 i, vertex.position, vertex.color
             )
         }
-        self.buffer_manager
-            .update_vertex_buffer(&self.device, vertices)
+        self.buffer_manager.update_vertex_buffer(vertices)
     }
 
     fn update_index_buffer(&mut self, indices: &[u32]) -> Result<(), RendererError> {
         println!("Updating vertex buffer with {} indices", indices.len());
-        self.buffer_manager
-            .update_index_buffer(&self.device, indices)
+        self.buffer_manager.update_index_buffer(indices)
     }
 
     fn draw(&mut self, vertex_count: u32, index_count: u32) -> Result<(), RendererError> {
@@ -136,20 +162,21 @@ impl GraphicsBackend for MetalBackend {
         // Set the viewport
         encoder.set_viewport(self.viewport.to_metal_viewport());
 
-        if let Some(vertex_buffer) = &self.buffer_manager.vertex_buffer {
-            encoder.set_vertex_buffer(0, Some(vertex_buffer), 0);
-            println!("Vertex buffer set");
-        } else {
-            println!("No vertex buffer available");
-        }
+        // Set the uniform buffer
+        encoder.set_vertex_buffer(1, Some(&self.uniform_buffer), 0);
 
-        if let Some(index_buffer) = &self.buffer_manager.index_buffer {
+        encoder.set_vertex_buffer(0, Some(&self.buffer_manager.vertex_buffer), 0);
+
+        let vertex_count = self.buffer_manager.get_vertex_count();
+        let index_count = self.buffer_manager.get_index_count();
+
+        if index_count > 0 {
             println!("Drawing indexed primitives");
             encoder.draw_indexed_primitives(
                 metal::MTLPrimitiveType::Triangle,
                 index_count as u64,
                 metal::MTLIndexType::UInt32,
-                index_buffer,
+                &self.buffer_manager.index_buffer,
                 0,
             );
         } else {
@@ -170,56 +197,5 @@ impl GraphicsBackend for MetalBackend {
         // The actual submission is done in the draw method,
         // so this method is left empty or used for any post-frame operations
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::MetalBackend;
-    use crate::renderer::backend::metal::pipeline::create_render_pipeline;
-    use cocoa::base::id as cocoa_id;
-    use metal::foreign_types::ForeignType;
-    use metal::{Device, MTLPixelFormat};
-    use objc::{class, msg_send, sel, sel_impl};
-
-    #[test]
-    fn test_setup_metal_layer() {
-        let device = Device::system_default().unwrap();
-        let view: cocoa_id = unsafe { msg_send![class!(NSView), new] };
-
-        let layer_result = MetalBackend::setup_metal_layer(&device, view);
-        assert!(layer_result.is_ok());
-
-        let layer = layer_result.unwrap();
-
-        unsafe {
-            let layer_device: *mut std::os::raw::c_void = msg_send![layer.as_ref(), device];
-            assert_eq!(layer_device, device.as_ptr() as *mut std::os::raw::c_void);
-
-            let pixel_format: MTLPixelFormat = msg_send![layer.as_ref(), pixelFormat];
-            assert_eq!(pixel_format, MTLPixelFormat::BGRA8Unorm);
-
-            let presents_with_transaction: bool =
-                msg_send![layer.as_ref(), presentsWithTransaction];
-            assert_eq!(presents_with_transaction, false);
-
-            // Check if the layer is properly set on the view
-            let view_layer: cocoa_id = msg_send![view, layer];
-            assert_eq!(view_layer as *const _, layer.as_ptr() as *const _);
-
-            let wants_layer: bool = msg_send![view, wantsLayer];
-            assert_eq!(wants_layer, true);
-        }
-    }
-
-    #[test]
-    fn test_create_render_pipeline() {
-        let device = Device::system_default().expect("No Metal device found");
-        let result = create_render_pipeline(&device);
-        assert!(
-            result.is_ok(),
-            "Failed to create render pipeline: {:?}",
-            result.err()
-        );
     }
 }

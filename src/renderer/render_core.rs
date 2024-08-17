@@ -1,60 +1,96 @@
 use super::{
-    backend::{
-        metal::{MacOSWindow, MetalBackend},
-        GraphicsBackend,
-    },
+    backend::{metal::MetalBackend, GraphicsBackend},
     common::{Color, RendererError, Vertex},
+    Camera,
 };
 use crate::common::vector3::RenderVector3;
+use glam::Vec3;
 use std::{cell::RefCell, rc::Rc};
-
-// Define a type alias for the render callback
-type RenderCallback = dyn for<'a> FnMut(&'a mut Renderer) -> Result<(), RendererError>;
+use winit::{
+    event::{Event, WindowEvent},
+    event_loop::EventLoop,
+    window::{Window, WindowBuilder},
+};
 
 /// Renderer manages the rendering process and window
 pub struct Renderer {
     backend: MetalBackend,
-    window: MacOSWindow,
-    // The render callback is a function that defines what to draw each frame
-    render_callback: Rc<RefCell<RenderCallback>>,
+    window: Window,
+    camera: Camera,
+}
+
+// Define a type alias for the render callback
+pub type RenderCallback = dyn Fn(&mut Renderer) -> Result<(), RendererError>;
+
+pub struct RendererSystem {
+    renderer: Rc<RefCell<Renderer>>,
+    event_loop: EventLoop<()>,
+    render_callback: Box<RenderCallback>,
 }
 
 impl Renderer {
     // Create a new Renderer with the specified window dimensions and title
-    pub fn new(width: u32, height: u32, title: &str) -> Result<Self, RendererError> {
-        let window = MacOSWindow::new(width, height, title)?;
+    pub fn new(window: Window) -> Result<Self, RendererError> {
         let backend = MetalBackend::new(&window)?;
-        // Initialize with a no-op render callback
-        let render_callback: Rc<RefCell<RenderCallback>> =
-            Rc::new(RefCell::new(Box::new(|_: &mut Renderer| Ok(()))));
+        let size = window.inner_size();
+        let scale_factor = window.scale_factor();
+        println!("Window size: {:?}, Scale factor: {scale_factor}", size);
+
+        let camera = Camera::new(
+            Vec3::new(0.0, 0.0, 3.0),
+            std::f32::consts::PI / 4.0,
+            size.width as f32 / size.height as f32,
+            0.1,
+            100.0,
+        );
+
         Ok(Renderer {
             backend,
             window,
-            render_callback,
+            camera,
         })
     }
 
-    pub fn run(self) -> Result<(), RendererError> {
-        let render_callback = self.render_callback.clone();
-        let mut renderer = self; // Move self into a mutable variable
-        let window = renderer.window.clone();
-        window.run_loop(move |_event| {
-            renderer.backend.prepare_frame()?;
-            render_callback.borrow_mut()(&mut renderer)?;
-            renderer.backend.present_frame()?;
-            Ok(())
-        })
+    // TODO: implement resize in the backend
+    // pub fn resize(&mut self, new_size: PhysicalSize<u32>) {
+    //     self.camera
+    //         .set_aspect_ratio(new_size.width as f32 / new_size.height as f32);
+    //     // Update the backend if necessary
+    //     self.backend.resize(new_size);
+    // }
+
+    pub fn render(&mut self) -> Result<(), RendererError> {
+        let view_matrix = self.camera.view_matrix();
+        let projection_matrix = self.camera.projection_matrix();
+        let view_projection_matrix = projection_matrix * view_matrix;
+
+        println!("View-Projection Matrix: {:?}", view_projection_matrix);
+
+        self.backend.update_uniforms(view_projection_matrix);
+
+        self.backend.prepare_frame()?;
+        self.backend.present_frame()?;
+
+        Ok(())
     }
 
-    // Set the function that will be called each frame to perform rendering
-    pub fn set_render_callback<F>(&mut self, callback: F)
-    where
-        F: for<'a> FnMut(&'a mut Renderer) -> Result<(), RendererError> + 'static,
-    {
-        self.render_callback = Rc::new(RefCell::new(Box::new(callback)));
-    }
+    // pub fn set_camera_position(&mut self, position: Vec3) {
+    //     self.camera.set_position(position);
+    // }
 
-    // Draw a triangle with the specified vertices and color
+    // pub fn set_camera_orientation(&mut self, orientation: Quat) {
+    //     self.camera.set_orientation(orientation);
+    // }
+
+    // pub fn move_camera(&mut self, direction: Vec3) {
+    //     self.camera.move_camera(direction);
+    // }
+
+    // pub fn rotate_camera(&mut self, pitch: f32, yaw: f32) {
+    //     self.camera.rotate_camera(pitch, yaw);
+    // }
+
+    /// Draw a triangle with the specified vertices and color
     pub fn draw_triangle(
         &mut self,
         v1: RenderVector3,
@@ -81,7 +117,7 @@ impl Renderer {
     }
 
     #[allow(dead_code)]
-    // Draw a rectangle with the specified corners and color
+    /// Draw a rectangle with the specified corners and color
     pub fn draw_rectangle(
         &mut self,
         top_left: RenderVector3,
@@ -112,5 +148,84 @@ impl Renderer {
         self.backend.update_vertex_buffer(&vertices)?;
         self.backend.update_index_buffer(&indices)?;
         self.backend.draw(4, 6)
+    }
+}
+
+impl RendererSystem {
+    pub fn new(width: u32, height: u32, title: &str) -> Result<Self, RendererError> {
+        let event_loop =
+            EventLoop::new().map_err(|e| RendererError::EventLoopError(e.to_string()))?;
+
+        let window = WindowBuilder::new()
+            .with_title(title)
+            .with_inner_size(winit::dpi::LogicalSize::new(width, height))
+            .build(&event_loop)
+            .map_err(|e| RendererError::WindowCreationFailed(e.to_string()))?;
+
+        let renderer = Rc::new(RefCell::new(Renderer::new(window)?));
+
+        Ok(RendererSystem {
+            renderer,
+            event_loop,
+            render_callback: Box::new(|_| Ok(())), // Default no-op callback
+        })
+    }
+
+    pub fn set_render_callback<F>(&mut self, callback: F)
+    where
+        F: Fn(&mut Renderer) -> Result<(), RendererError> + 'static,
+    {
+        self.render_callback = Box::new(callback);
+    }
+
+    pub fn run(self) -> Result<(), RendererError> {
+        let RendererSystem {
+            renderer,
+            event_loop,
+            render_callback,
+        } = self;
+
+        event_loop
+            .run(move |event, event_loop_window_target| match event {
+                Event::WindowEvent {
+                    event: WindowEvent::CloseRequested,
+                    ..
+                } => {
+                    event_loop_window_target.exit();
+                }
+                // Event::WindowEvent {
+                //     event: WindowEvent::Resized(new_size),
+                //     ..
+                // } => {
+                //     renderer.borrow_mut().resize(new_size);
+                // }
+                Event::AboutToWait => {
+                    renderer.borrow().window.request_redraw();
+                }
+                Event::WindowEvent {
+                    event: WindowEvent::RedrawRequested,
+                    ..
+                } => {
+                    // if let Err(e) = self.backend.prepare_frame() {
+                    //     eprintln!("Error preparing frame: {:?}", e);
+                    // }
+                    // if let Err(e) = self.render_callback.borrow_mut()(&mut self) {
+                    //     eprintln!("Error in render callback: {:?}", e);
+                    // }
+                    // if let Err(e) = self.backend.present_frame() {
+                    //     eprintln!("Error presenting frame: {:?}", e);
+                    // }
+
+                    if let Err(e) = render_callback(&mut renderer.borrow_mut()) {
+                        eprintln!("Error in render callback: {:?}", e);
+                    }
+
+                    if let Err(e) = renderer.borrow_mut().render() {
+                        eprintln!("Error rendering: {:?}", e);
+                    }
+                }
+                _ => (),
+            })
+            .map_err(|e| RendererError::EventLoopError(e.to_string()))
     }
 }

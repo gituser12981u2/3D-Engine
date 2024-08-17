@@ -1,5 +1,7 @@
 use core::fmt;
 
+use raw_window_handle::HandleError;
+
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Color {
     pub r: f32,
@@ -21,6 +23,21 @@ pub struct Vertex {
     pub color: [f32; 4],
 }
 
+impl Default for Vertex {
+    fn default() -> Self {
+        Vertex {
+            position: [0.0, 0.0, 0.0],
+            color: [1.0, 1.0, 1.0, 1.0],
+        }
+    }
+}
+
+impl From<HandleError> for RendererError {
+    fn from(error: HandleError) -> Self {
+        RendererError::WindowHandleError(error.to_string())
+    }
+}
+
 #[derive(Debug)]
 pub enum RendererError {
     DeviceNotFound,
@@ -28,6 +45,11 @@ pub enum RendererError {
     ShaderFunctionNotFound(String),
     PipelineCreationFailed(String),
     DrawFailed(String),
+    WindowCreationFailed(String),
+    EventLoopError(String),
+    UnsupportedPlatform,
+    WindowHandleError(String),
+    BufferOverflow,
 }
 
 impl fmt::Display for RendererError {
@@ -44,6 +66,21 @@ impl fmt::Display for RendererError {
                 write!(f, "Pipeline creation failed: {msg}")
             }
             RendererError::DrawFailed(msg) => write!(f, "Draw operation failed: {msg}"),
+            RendererError::WindowCreationFailed(msg) => {
+                write!(f, "Window creation with winit failed: {msg}")
+            }
+            RendererError::EventLoopError(msg) => {
+                write!(f, "Winit event loop error: {msg}")
+            }
+            RendererError::UnsupportedPlatform => {
+                write!(f, "Unsupported platform")
+            }
+            RendererError::WindowHandleError(msg) => {
+                write!(f, "Winit window handle error: {msg}")
+            }
+            RendererError::BufferOverflow => {
+                write!(f, "Buffer overflow")
+            }
         }
     }
 }

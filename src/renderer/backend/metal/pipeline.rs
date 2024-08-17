@@ -11,14 +11,19 @@ pub fn create_render_pipeline(device: &Device) -> Result<RenderPipelineState, Re
 
     // Compile the library
     let library = device.new_library_with_file(shader_lib_path).map_err(|e| {
+        println!("Shader compilation error: {:?}", e);
         RendererError::ShaderCompilationFailed(format!("Failed to load shader library: {}", e))
     })?;
 
-    println!("Shaders loaded successfully");
+    println!("Shaders loaded successfully. Available functions:");
+    for function in library.function_names() {
+        print!(" - {function}");
+    }
 
-    let vertex_function = library
-        .get_function("vertex_main", None)
-        .map_err(|_| RendererError::ShaderFunctionNotFound("vertex_main".to_string()))?;
+    let vertex_function = library.get_function("vertex_main", None).map_err(|e| {
+        println!("Failed to get vertex_main function: {:?}", e);
+        RendererError::ShaderFunctionNotFound("vertex_main".to_string())
+    })?;
     let fragment_function = library
         .get_function("fragment_main", None)
         .map_err(|_| RendererError::ShaderFunctionNotFound("fragment_main".to_string()))?;
@@ -72,6 +77,7 @@ pub fn create_render_pipeline(device: &Device) -> Result<RenderPipelineState, Re
         .unwrap()
         .set_buffer_index(0);
 
+    // Vertex buffer layout
     vertex_descriptor
         .layouts()
         .object_at(0)
@@ -127,4 +133,21 @@ pub fn create_render_pipeline(device: &Device) -> Result<RenderPipelineState, Re
     device
         .new_render_pipeline_state(&pipeline_descriptor)
         .map_err(|e| RendererError::PipelineCreationFailed(e.to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::renderer::backend::metal::pipeline::create_render_pipeline;
+    use metal::Device;
+
+    #[test]
+    fn test_create_render_pipeline() {
+        let device = Device::system_default().expect("No Metal device found");
+        let result = create_render_pipeline(&device);
+        assert!(
+            result.is_ok(),
+            "Failed to create render pipeline: {:?}",
+            result.err()
+        );
+    }
 }
