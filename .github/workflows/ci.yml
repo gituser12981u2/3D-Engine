@@ -2,10 +2,9 @@ name: Rust CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ master, develop ]
   pull_request:
-    branches: [ main ]
-
+    branches: [ master, develop ]
 
 env:
   CARGO_TERM_COLOR: always
@@ -97,7 +96,6 @@ jobs:
         run: |
           # Parse the most recent commit message
           COMMIT_MSG=$(git log -1 --pretty=%B)
-          
           # Determine version bump type
           if echo "$COMMIT_MSG" | grep -qE '^BREAKING CHANGE:'; then
             BUMP_TYPE="major"
@@ -106,10 +104,8 @@ jobs:
           else
             BUMP_TYPE="patch"
           fi
-          
           # Bump version in Cargo.toml
           cargo bump $BUMP_TYPE
-          
           # Get the new version
           NEW_VERSION=$(cargo pkgid | cut -d# -f2)
           echo "::set-output name=new_version::$NEW_VERSION"
