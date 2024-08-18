@@ -111,6 +111,11 @@ impl MetalBackend {
         unsafe {
             *contents = view_projection_matrix;
         }
+        let range = metal::NSRange {
+            location: 0,
+            length: std::mem::size_of::<Mat4>() as u64,
+        };
+        self.uniform_buffer.did_modify_range(range);
     }
 }
 

@@ -3,12 +3,14 @@ use super::{
     common::{Color, RendererError, Vertex},
     Camera,
 };
-use crate::common::vector3::RenderVector3;
+use crate::{common::vector3::RenderVector3, renderer::camera::CameraMovement};
 use glam::Vec3;
 use std::{cell::RefCell, rc::Rc};
 use winit::{
-    event::{Event, WindowEvent},
+    dpi::PhysicalSize,
+    event::{Event, KeyEvent, MouseScrollDelta, WindowEvent},
     event_loop::EventLoop,
+    keyboard::{KeyCode, PhysicalKey},
     window::{Window, WindowBuilder},
 };
 
@@ -17,6 +19,7 @@ pub struct Renderer {
     backend: MetalBackend,
     window: Window,
     camera: Camera,
+    last_frame_time: std::time::Instant,
 }
 
 // Define a type alias for the render callback
@@ -32,13 +35,14 @@ impl Renderer {
     // Create a new Renderer with the specified window dimensions and title
     pub fn new(window: Window) -> Result<Self, RendererError> {
         let backend = MetalBackend::new(&window)?;
+
         let size = window.inner_size();
         let scale_factor = window.scale_factor();
         println!("Window size: {:?}, Scale factor: {scale_factor}", size);
 
         let camera = Camera::new(
             Vec3::new(0.0, 0.0, 3.0),
-            std::f32::consts::PI / 4.0,
+            45.0,
             size.width as f32 / size.height as f32,
             0.1,
             100.0,
@@ -48,20 +52,13 @@ impl Renderer {
             backend,
             window,
             camera,
+            last_frame_time: std::time::Instant::now(),
         })
     }
 
-    // TODO: implement resize in the backend
-    // pub fn resize(&mut self, new_size: PhysicalSize<u32>) {
-    //     self.camera
-    //         .set_aspect_ratio(new_size.width as f32 / new_size.height as f32);
-    //     // Update the backend if necessary
-    //     self.backend.resize(new_size);
-    // }
-
     pub fn render(&mut self) -> Result<(), RendererError> {
-        let view_matrix = self.camera.view_matrix();
-        let projection_matrix = self.camera.projection_matrix();
+        let view_matrix = self.camera.get_view_matrix();
+        let projection_matrix = self.camera.get_projection_matrix();
         let view_projection_matrix = projection_matrix * view_matrix;
 
         println!("View-Projection Matrix: {:?}", view_projection_matrix);
@@ -74,21 +71,13 @@ impl Renderer {
         Ok(())
     }
 
-    // pub fn set_camera_position(&mut self, position: Vec3) {
-    //     self.camera.set_position(position);
-    // }
-
-    // pub fn set_camera_orientation(&mut self, orientation: Quat) {
-    //     self.camera.set_orientation(orientation);
-    // }
-
-    // pub fn move_camera(&mut self, direction: Vec3) {
-    //     self.camera.move_camera(direction);
-    // }
-
-    // pub fn rotate_camera(&mut self, pitch: f32, yaw: f32) {
-    //     self.camera.rotate_camera(pitch, yaw);
-    // }
+    // TODO: implement resize in the backend
+    pub fn resize(&mut self, new_size: PhysicalSize<u32>) {
+        self.camera
+            .set_aspect_ratio(new_size.width as f32 / new_size.height as f32);
+        // Update the backend if necessary
+        // self.backend.resize(new_size);
+    }
 
     /// Draw a triangle with the specified vertices and color
     pub fn draw_triangle(
@@ -149,6 +138,54 @@ impl Renderer {
         self.backend.update_index_buffer(&indices)?;
         self.backend.draw(4, 6)
     }
+
+    #[allow(dead_code)]
+    pub fn draw_grid(&mut self, size: f32, divisions: u32) -> Result<(), RendererError> {
+        let step = size / divisions as f32;
+        let half_size = size / 2.0;
+
+        let mut vertices = Vec::new();
+        let mut indices = Vec::new();
+
+        // Create grid lines
+        for i in 0..=divisions {
+            let pos = -half_size + i as f32 * step;
+
+            // X-axis line
+            vertices.push(Vertex {
+                position: [-half_size, 0.0, pos],
+                color: [0.5, 0.5, 0.5, 1.0],
+            });
+            vertices.push(Vertex {
+                position: [half_size, 0.0, pos],
+                color: [0.5, 0.5, 0.5, 1.0],
+            });
+
+            // Z-axis line
+            vertices.push(Vertex {
+                position: [pos, 0.0, -half_size],
+                color: [0.5, 0.5, 0.5, 1.0],
+            });
+            vertices.push(Vertex {
+                position: [pos, 0.0, half_size],
+                color: [0.5, 0.5, 0.5, 1.0],
+            });
+
+            // Create indices for lines
+            let base_index = i * 4;
+            indices.extend_from_slice(&[
+                base_index,
+                base_index + 1,
+                base_index + 2,
+                base_index + 3,
+            ]);
+        }
+
+        self.backend.update_vertex_buffer(&vertices)?;
+        self.backend.update_index_buffer(&indices)?;
+        self.backend
+            .draw(vertices.len() as u32, indices.len() as u32)
+    }
 }
 
 impl RendererSystem {
@@ -179,52 +216,120 @@ impl RendererSystem {
     }
 
     pub fn run(self) -> Result<(), RendererError> {
-        let RendererSystem {
-            renderer,
-            event_loop,
-            render_callback,
-        } = self;
+        let window_size = self.renderer.borrow().window.inner_size();
+        let center_x = window_size.width as f64 / 2.0;
+        let center_y = window_size.height as f64 / 2.0;
 
-        event_loop
-            .run(move |event, event_loop_window_target| match event {
-                Event::WindowEvent {
-                    event: WindowEvent::CloseRequested,
-                    ..
-                } => {
-                    event_loop_window_target.exit();
-                }
-                // Event::WindowEvent {
-                //     event: WindowEvent::Resized(new_size),
-                //     ..
-                // } => {
-                //     renderer.borrow_mut().resize(new_size);
-                // }
-                Event::AboutToWait => {
-                    renderer.borrow().window.request_redraw();
-                }
-                Event::WindowEvent {
-                    event: WindowEvent::RedrawRequested,
-                    ..
-                } => {
-                    // if let Err(e) = self.backend.prepare_frame() {
-                    //     eprintln!("Error preparing frame: {:?}", e);
-                    // }
-                    // if let Err(e) = self.render_callback.borrow_mut()(&mut self) {
-                    //     eprintln!("Error in render callback: {:?}", e);
-                    // }
-                    // if let Err(e) = self.backend.present_frame() {
-                    //     eprintln!("Error presenting frame: {:?}", e);
-                    // }
+        // Enable mouse capture
+        self.renderer
+            .borrow()
+            .window
+            .set_cursor_grab(winit::window::CursorGrabMode::Confined)
+            .or(self
+                .renderer
+                .borrow()
+                .window
+                .set_cursor_grab(winit::window::CursorGrabMode::Locked))
+            .unwrap();
+        self.renderer.borrow().window.set_cursor_visible(false);
 
-                    if let Err(e) = render_callback(&mut renderer.borrow_mut()) {
-                        eprintln!("Error in render callback: {:?}", e);
+        self.event_loop
+            .run(move |event, event_loop_window_target| {
+                match event {
+                    Event::WindowEvent { event, .. } => match event {
+                        WindowEvent::CloseRequested => event_loop_window_target.exit(),
+                        WindowEvent::Resized(new_size) => {
+                            self.renderer.borrow_mut().resize(new_size);
+                        }
+                        WindowEvent::KeyboardInput {
+                            event:
+                                KeyEvent {
+                                    physical_key,
+                                    state,
+                                    ..
+                                },
+                            ..
+                        } => {
+                            let mut renderer = self.renderer.borrow_mut();
+                            let mut delta_time = renderer.last_frame_time.elapsed().as_secs_f32();
+                            delta_time = delta_time.min(0.1); // Cap delta_time to 0.1 seconds
+                            renderer.last_frame_time = std::time::Instant::now();
+
+                            if let PhysicalKey::Code(key_code) = physical_key {
+                                use winit::event::ElementState;
+                                if state == ElementState::Pressed {
+                                    match key_code {
+                                        KeyCode::KeyW => renderer
+                                            .camera
+                                            .process_keyboard(CameraMovement::Forward, delta_time),
+                                        KeyCode::KeyS => renderer
+                                            .camera
+                                            .process_keyboard(CameraMovement::Backward, delta_time),
+                                        KeyCode::KeyA => renderer
+                                            .camera
+                                            .process_keyboard(CameraMovement::Left, delta_time),
+                                        KeyCode::KeyD => renderer
+                                            .camera
+                                            .process_keyboard(CameraMovement::Right, delta_time),
+                                        KeyCode::Space => renderer
+                                            .camera
+                                            .process_keyboard(CameraMovement::Up, delta_time),
+                                        KeyCode::ShiftLeft => renderer
+                                            .camera
+                                            .process_keyboard(CameraMovement::Down, delta_time),
+                                        _ => {}
+                                    }
+                                }
+                            }
+                        }
+                        WindowEvent::CursorMoved { position, .. } => {
+                            let mut renderer = self.renderer.borrow_mut();
+
+                            let delta_x = position.x - center_x;
+                            let delta_y = center_y - position.y; // Reversed since y-coordinates go from bottom to top
+                            renderer
+                                .camera
+                                .process_mouse_movement(delta_x as f32, delta_y as f32);
+
+                            // Reset cursor position to center
+                            renderer
+                                .window
+                                .set_cursor_position(winit::dpi::PhysicalPosition::new(
+                                    center_x, center_y,
+                                ))
+                                .unwrap()
+                        }
+                        WindowEvent::MouseWheel { delta, .. } => {
+                            let mut renderer = self.renderer.borrow_mut();
+                            match delta {
+                                MouseScrollDelta::LineDelta(_, y) => {
+                                    renderer.camera.process_mouse_scroll(y)
+                                }
+                                MouseScrollDelta::PixelDelta(position) => renderer
+                                    .camera
+                                    .process_mouse_scroll(position.y as f32 * 0.1),
+                            }
+                        }
+                        WindowEvent::RedrawRequested => {
+                            let mut renderer = self.renderer.borrow_mut();
+
+                            // Draw objects
+                            if let Err(e) = (self.render_callback)(&mut renderer) {
+                                eprintln!("Error in render callback: {:?}", e);
+                            }
+
+                            // Present the frame
+                            if let Err(e) = renderer.render() {
+                                eprintln!("Error rendering: {:?}", e);
+                            }
+                        }
+                        _ => {}
+                    },
+                    Event::AboutToWait => {
+                        self.renderer.borrow().window.request_redraw();
                     }
-
-                    if let Err(e) = renderer.borrow_mut().render() {
-                        eprintln!("Error rendering: {:?}", e);
-                    }
+                    _ => {}
                 }
-                _ => (),
             })
             .map_err(|e| RendererError::EventLoopError(e.to_string()))
     }
