@@ -95,6 +95,7 @@ pub enum CameraMovement {
 mod tests {
     use crate::renderer::{camera::CameraMovement, Camera};
     use glam::{Mat3, Mat4, Vec3};
+    use std::panic;
 
     fn vec3_approx_eq(a: Vec3, b: Vec3, epsilon: f32) -> bool {
         (a.x - b.x).abs() < epsilon && (a.y - b.y).abs() < epsilon && (a.z - b.z).abs() < epsilon
@@ -226,30 +227,37 @@ mod tests {
 
     #[test]
     fn test_camera_movement() {
-        let position = Vec3::ZERO;
-        let fov = 45.0;
-        let aspect_ratio = 1.0;
-        let near = 0.1;
-        let far = 100.0;
-        let movement_speed = 0.5;
-        let mouse_sensitivity = 0.001;
+        let result = panic::catch_unwind(|| {
+            let position = Vec3::ZERO;
+            let fov = 45.0;
+            let aspect_ratio = 1.0;
+            let near = 0.1;
+            let far = 100.0;
+            let movement_speed = 0.5;
+            let mouse_sensitivity = 0.001;
 
-        let mut camera = Camera::new(position, fov, aspect_ratio, near, far);
-        camera.movement_speed = movement_speed;
-        camera.mouse_sensitivity = mouse_sensitivity;
+            let mut camera = Camera::new(position, fov, aspect_ratio, near, far);
+            camera.movement_speed = movement_speed;
+            camera.mouse_sensitivity = mouse_sensitivity;
 
-        let delta_time = 1.0;
-        camera.process_keyboard(CameraMovement::Forward, delta_time);
+            let delta_time = 1.0;
+            camera.process_keyboard(CameraMovement::Forward, delta_time);
 
-        let expected_movement = movement_speed * delta_time;
-        let expected_position = Vec3::new(0.0, 0.0, -expected_movement);
+            let expected_movement = movement_speed * delta_time;
+            let expected_position = Vec3::new(0.0, 0.0, -expected_movement);
 
-        assert!(
-            vec3_approx_eq(camera.position, expected_position, 1e-6),
-            "Expected position: {:?}, got {:?}",
-            expected_position,
-            camera.position
-        );
+            assert!(
+                vec3_approx_eq(camera.position, expected_position, 1e-6),
+                "Expected position: {:?}, got {:?}",
+                expected_position,
+                camera.position
+            );
+        });
+
+        if let Err(e) = result {
+            eprintln!("Test panicked: {:?}", e);
+            panic!("test_camera_movement failed");
+        }
     }
 
     #[test]

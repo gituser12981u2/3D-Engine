@@ -20,9 +20,15 @@ jobs:
           profile: minimal
           toolchain: stable
           override: true
-      - uses: actions-rs/cargo@v1
-        with:
-          command: test
+      - name: Run tests
+        run: |
+          METAL_DEVICE_WRAPPER_TYPE=1 cargo test -- --nocapture
+        env:
+          METAL_DEVICE_WRAPPER_TYPE: 1
+          METAL_DEBUG_ERROR_MODE: 10
+      # - uses: actions-rs/cargo@v1
+      #   with:
+      #     command: test
 
   fmt:
     name: Rustfmt
