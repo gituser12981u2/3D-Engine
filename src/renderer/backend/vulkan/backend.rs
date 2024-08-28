@@ -13,7 +13,11 @@ impl VulkanBackend {
 }
 
 impl GraphicsBackend for VulkanBackend {
-    fn prepare_frame(&mut self) -> Result<(), crate::renderer::RendererError> {
+    #[allow(unused_variables)]
+    fn draw(
+        &mut self,
+        draw_command: crate::renderer::common::BackendDrawCommand,
+    ) -> Result<(), crate::renderer::RendererError> {
         unimplemented!()
     }
 
@@ -34,15 +38,56 @@ impl GraphicsBackend for VulkanBackend {
     }
 
     #[allow(unused_variables)]
-    fn draw(
+    fn update_uniform_buffer(
         &mut self,
-        vertex_count: u32,
-        index_count: u32,
+        uniform_data: &glam::Mat4,
     ) -> Result<(), crate::renderer::RendererError> {
         unimplemented!()
     }
 
-    fn present_frame(&mut self) -> Result<(), crate::renderer::RendererError> {
+    #[allow(unused_variables)]
+    fn update_instance_buffer(
+        &mut self,
+        instances: &[crate::renderer::render_queue::InstanceData],
+    ) -> Result<(), crate::renderer::RendererError> {
+        unimplemented!()
+    }
+
+    #[allow(unused_variables)]
+    fn create_texture(
+        &mut self,
+        descriptor: &metal::TextureDescriptor,
+    ) -> crate::renderer::common::TextureId {
+        unimplemented!()
+    }
+
+    #[allow(unused_variables)]
+    fn update_texture(
+        &mut self,
+        id: crate::renderer::common::TextureId,
+        region: metal::MTLRegion,
+        mipmap_level: u64,
+        slice: u64,
+        bytes: &[u8],
+        bytes_per_row: u64,
+        bytes_per_image: u64,
+    ) -> Result<(), crate::renderer::RendererError> {
+        unimplemented!()
+    }
+
+    #[allow(unused_variables)]
+    fn create_render_pipeline_state(
+        &mut self,
+        descriptor: &metal::RenderPipelineDescriptor,
+    ) -> Result<crate::renderer::common::RenderPipelineId, crate::renderer::RendererError> {
+        unimplemented!()
+    }
+
+    #[allow(unused_variables)]
+    fn render_pass(
+        &mut self,
+        descriptor: &metal::RenderPassDescriptorRef,
+    ) -> Result<crate::renderer::backend::metal::RenderPass, crate::renderer::RendererError> {
         unimplemented!()
     }
 }

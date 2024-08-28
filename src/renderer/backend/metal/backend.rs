@@ -1,53 +1,129 @@
 use super::buffer_manager::BufferManager;
-use super::pipeline::create_render_pipeline;
+use super::pipeline::{create_default_pipeline_descriptor, RenderPipelineCache};
+use super::texture_manager::TextureManager;
 use crate::renderer::backend::GraphicsBackend;
-use crate::renderer::common::{RendererError, Vertex};
+use crate::renderer::common::{
+    BackendDrawCommand, RenderPipelineId, RendererError, TextureId, Vertex,
+};
 use cocoa::base::id as cocoa_id;
 use core_graphics::display::CGSize;
-use glam::Mat4;
 use metal::{
     objc::{msg_send, sel, sel_impl},
-    CommandQueue, Device, MetalLayer, RenderPipelineState,
+    CommandQueue, Device, MetalLayer,
 };
-use metal::{Buffer, MTLResourceOptions, MTLViewport};
+use metal::{
+    BufferRef, MTLRegion, MTLViewport, MetalDrawableRef, RenderCommandEncoderRef,
+    RenderPassDescriptorRef, RenderPipelineDescriptor, TextureDescriptor,
+};
 use raw_window_handle::HasWindowHandle;
 use winit::window::Window;
 
 pub struct MetalBackend {
+    device: Device,
     command_queue: CommandQueue,
-    pipeline_state: RenderPipelineState,
+    render_pipeline_cache: RenderPipelineCache,
     buffer_manager: BufferManager,
+    texture_manager: TextureManager,
     layer: MetalLayer,
-    viewport: Viewport,
-    uniform_buffer: Buffer,
+    default_pipeline_id: RenderPipelineId,
 }
 
-struct Viewport {
-    x: u32,
-    y: u32,
-    width: u32,
-    height: u32,
+pub struct RenderPass<'a> {
+    encoder: &'a RenderCommandEncoderRef,
+    viewport: MTLViewport,
 }
 
-impl Viewport {
-    pub fn new(x: u32, y: u32, width: u32, height: u32) -> Self {
-        Viewport {
-            x,
-            y,
-            width,
-            height,
+impl<'a> RenderPass<'a> {
+    pub fn new(encoder: &'a RenderCommandEncoderRef, viewport: MTLViewport) -> Self {
+        RenderPass { encoder, viewport }
+    }
+
+    pub fn set_pipeline(&mut self, pipeline: &metal::RenderPipelineState) {
+        self.encoder.set_render_pipeline_state(pipeline);
+    }
+
+    pub fn set_vertex_buffer(&self, index: u64, buffer: Option<&BufferRef>, offset: u64) {
+        self.encoder.set_vertex_buffer(index, buffer, offset);
+    }
+
+    fn draw(&mut self, draw_command: BackendDrawCommand, buffer_manager: &BufferManager) {
+        self.encoder.set_viewport(self.viewport);
+
+        match draw_command {
+            BackendDrawCommand::Basic {
+                primitive_type,
+                vertex_start,
+                vertex_count,
+            } => {
+                println!(
+                    "Drawing basic primitives: type={:?}, start={}, count={}",
+                    primitive_type, vertex_start, vertex_count
+                );
+                self.encoder
+                    .draw_primitives(primitive_type.into(), vertex_start, vertex_count);
+            }
+            BackendDrawCommand::Indexed {
+                primitive_type,
+                index_count,
+                index_type,
+                index_buffer_offset,
+            } => {
+                println!(
+                    "Drawing indexed primitives: type={:?}, count={}, index_type={:?}, offset={}",
+                    primitive_type, index_count, index_type, index_buffer_offset
+                );
+                self.encoder.draw_indexed_primitives(
+                    primitive_type.into(),
+                    index_count,
+                    index_type.into(),
+                    &buffer_manager.index_buffer,
+                    index_buffer_offset,
+                );
+            }
+            BackendDrawCommand::Instanced {
+                primitive_type,
+                vertex_start,
+                vertex_count,
+                instance_count,
+            } => {
+                println!(
+                    "Drawing instanced primitives: type={:?}, start={}, count={}, instances={}",
+                    primitive_type, vertex_start, vertex_count, instance_count
+                );
+                self.encoder
+                    .set_vertex_buffer(2, Some(&buffer_manager.instance_buffer), 0);
+                self.encoder.draw_primitives_instanced(
+                    primitive_type.into(),
+                    vertex_start,
+                    vertex_count,
+                    instance_count,
+                );
+            }
+            BackendDrawCommand::IndexedInstanced {
+                primitive_type,
+                index_count,
+                index_type,
+                index_buffer_offset,
+                instance_count,
+            } => {
+                println!("Drawing indexed instanced primitives: type={:?}, count={}, index_type={:?}, offset={}, instances={}", 
+                        primitive_type, index_count, index_type, index_buffer_offset, instance_count);
+                self.encoder
+                    .set_vertex_buffer(2, Some(&buffer_manager.instance_buffer), 0);
+                self.encoder.draw_indexed_primitives_instanced(
+                    primitive_type.into(),
+                    index_count,
+                    index_type.into(),
+                    &buffer_manager.index_buffer,
+                    index_buffer_offset,
+                    instance_count,
+                );
+            }
         }
     }
 
-    pub fn to_metal_viewport(&self) -> MTLViewport {
-        MTLViewport {
-            originX: self.x as f64,
-            originY: self.y as f64,
-            width: self.width as f64,
-            height: self.height as f64,
-            znear: 0.0,
-            zfar: 1.0,
-        }
+    pub fn end(self) {
+        self.encoder.end_encoding();
     }
 }
 
@@ -55,10 +131,15 @@ impl MetalBackend {
     pub fn new(window: &Window) -> Result<Self, RendererError> {
         let device = Device::system_default().ok_or(RendererError::DeviceNotFound)?;
         let command_queue = device.new_command_queue();
-        let pipeline_state = create_render_pipeline(&device)?;
+        let mut render_pipeline_cache = RenderPipelineCache::new(&device)?;
         let buffer_manager = BufferManager::new(&device)?;
+        let texture_manager = TextureManager::new(&device);
 
-        let metal_layer = match window.window_handle()?.as_raw() {
+        let default_pipeline_descriptor = create_default_pipeline_descriptor(&device)?;
+        let default_pipeline_id =
+            render_pipeline_cache.create_pipeline_state(&default_pipeline_descriptor)?;
+
+        let layer = match window.window_handle()?.as_raw() {
             raw_window_handle::RawWindowHandle::AppKit(handle) => {
                 let ns_view = handle.ns_view.as_ptr() as cocoa_id;
                 let layer = Self::setup_metal_layer(&device, ns_view)?;
@@ -71,21 +152,14 @@ impl MetalBackend {
             _ => return Err(RendererError::UnsupportedPlatform),
         };
 
-        let size = window.inner_size();
-        let viewport = Viewport::new(0, 0, size.width, size.height);
-
-        let uniform_buffer = device.new_buffer(
-            std::mem::size_of::<Mat4>() as u64,
-            MTLResourceOptions::CPUCacheModeDefaultCache | MTLResourceOptions::StorageModeManaged,
-        );
-
         Ok(MetalBackend {
+            device,
             command_queue,
-            pipeline_state,
+            render_pipeline_cache,
             buffer_manager,
-            layer: metal_layer,
-            viewport,
-            uniform_buffer,
+            texture_manager,
+            layer,
+            default_pipeline_id,
         })
     }
 
@@ -106,22 +180,64 @@ impl MetalBackend {
         }
     }
 
-    pub fn update_uniforms(&mut self, view_projection_matrix: Mat4) {
-        let contents = self.uniform_buffer.contents() as *mut Mat4;
-        unsafe {
-            *contents = view_projection_matrix;
+    fn create_viewport(&self, drawable: &MetalDrawableRef) -> MTLViewport {
+        let texture = drawable.texture();
+        MTLViewport {
+            originX: 0.0,
+            originY: 0.0,
+            width: texture.width() as f64,
+            height: texture.height() as f64,
+            znear: 0.0,
+            zfar: 1.0,
         }
-        let range = metal::NSRange {
-            location: 0,
-            length: std::mem::size_of::<Mat4>() as u64,
-        };
-        self.uniform_buffer.did_modify_range(range);
+    }
+
+    pub fn device(&self) -> &Device {
+        &self.device
     }
 }
 
 impl GraphicsBackend for MetalBackend {
-    fn prepare_frame(&mut self) -> Result<(), RendererError> {
-        // Any per-frame setup could go here
+    fn draw(&mut self, draw_command: BackendDrawCommand) -> Result<(), RendererError> {
+        let descriptor = metal::RenderPassDescriptor::new();
+
+        let drawable = self
+            .layer
+            .next_drawable()
+            .ok_or(RendererError::DrawFailed("No next drawable".to_string()))?;
+
+        let texture = drawable.texture();
+
+        let color_attachment = descriptor.color_attachments().object_at(0).unwrap();
+        color_attachment.set_texture(Some(texture));
+        color_attachment.set_load_action(metal::MTLLoadAction::Clear);
+        color_attachment.set_clear_color(metal::MTLClearColor::new(0.1, 0.1, 0.1, 1.0)); // Dark gray background
+        color_attachment.set_store_action(metal::MTLStoreAction::Store);
+
+        let command_buffer = self.command_queue.new_command_buffer();
+        let encoder = command_buffer.new_render_command_encoder(descriptor);
+
+        let viewport = self.create_viewport(drawable);
+        let mut render_pass = RenderPass::new(encoder, viewport);
+
+        // Set the pipeline state (you'll need to get the appropriate pipeline state based on the draw command)
+        let pipeline_state = self
+            .render_pipeline_cache
+            .get_pipeline_state(self.default_pipeline_id)
+            .ok_or(RendererError::InvalidPipelineId)?;
+        render_pass.set_pipeline(pipeline_state);
+
+        // Set vertex and uniform buffers
+        render_pass.set_vertex_buffer(0, Some(&self.buffer_manager.vertex_buffer), 0);
+        render_pass.set_vertex_buffer(1, Some(&self.buffer_manager.uniform_buffer), 0);
+        println!("Vertex and uniform buffers set");
+
+        render_pass.draw(draw_command, &self.buffer_manager);
+        render_pass.end();
+
+        command_buffer.present_drawable(drawable);
+        command_buffer.commit();
+
         Ok(())
     }
 
@@ -142,65 +258,158 @@ impl GraphicsBackend for MetalBackend {
         self.buffer_manager.update_index_buffer(indices)
     }
 
-    fn draw(&mut self, vertex_count: u32, index_count: u32) -> Result<(), RendererError> {
-        println!("Drawing: {vertex_count} vertices, {index_count} indices");
+    fn update_uniform_buffer(&mut self, uniform_data: &glam::Mat4) -> Result<(), RendererError> {
+        self.buffer_manager.update_uniform_buffer(uniform_data)
+    }
 
-        let command_buffer = self.command_queue.new_command_buffer();
-        let descriptor = metal::RenderPassDescriptor::new();
+    fn update_instance_buffer(
+        &mut self,
+        instances: &[crate::renderer::render_queue::InstanceData],
+    ) -> Result<(), RendererError> {
+        self.buffer_manager.update_instance_buffer(instances)
+    }
 
+    fn create_texture(&mut self, descriptor: &TextureDescriptor) -> TextureId {
+        self.texture_manager.create_texture(descriptor)
+    }
+
+    fn update_texture(
+        &mut self,
+        id: TextureId,
+        region: MTLRegion,
+        mipmap_level: u64,
+        slice: u64,
+        data: &[u8],
+        bytes_per_row: u64,
+        bytes_per_image: u64,
+    ) -> Result<(), RendererError> {
+        self.texture_manager.update_texture(
+            id,
+            region,
+            mipmap_level,
+            slice,
+            data,
+            bytes_per_row,
+            bytes_per_image,
+        )
+    }
+
+    fn create_render_pipeline_state(
+        &mut self,
+        descriptor: &RenderPipelineDescriptor,
+    ) -> Result<RenderPipelineId, RendererError> {
+        self.render_pipeline_cache.create_pipeline_state(descriptor)
+    }
+
+    fn render_pass(
+        &mut self,
+        descriptor: &RenderPassDescriptorRef,
+    ) -> Result<RenderPass, RendererError> {
         let drawable = self
             .layer
             .next_drawable()
             .ok_or(RendererError::DrawFailed("No next drawable".to_string()))?;
 
-        let texture = drawable.texture();
-
-        let color_attachment = descriptor.color_attachments().object_at(0).unwrap();
-        color_attachment.set_texture(Some(texture));
-        color_attachment.set_load_action(metal::MTLLoadAction::Clear);
-        color_attachment.set_clear_color(metal::MTLClearColor::new(0.1, 0.1, 0.1, 1.0)); // Dark gray background
-        color_attachment.set_store_action(metal::MTLStoreAction::Store);
-
+        let command_buffer = self.command_queue.new_command_buffer();
         let encoder = command_buffer.new_render_command_encoder(descriptor);
-        encoder.set_render_pipeline_state(&self.pipeline_state);
 
-        // Set the viewport
-        encoder.set_viewport(self.viewport.to_metal_viewport());
+        let viewport = MTLViewport {
+            originX: 0.0,
+            originY: 0.0,
+            width: drawable.texture().width() as f64,
+            height: drawable.texture().height() as f64,
+            znear: 0.0,
+            zfar: 1.0,
+        };
 
-        // Set the uniform buffer
-        encoder.set_vertex_buffer(1, Some(&self.uniform_buffer), 0);
-
-        encoder.set_vertex_buffer(0, Some(&self.buffer_manager.vertex_buffer), 0);
-
-        let vertex_count = self.buffer_manager.get_vertex_count();
-        let index_count = self.buffer_manager.get_index_count();
-
-        if index_count > 0 {
-            println!("Drawing indexed primitives");
-            encoder.draw_indexed_primitives(
-                metal::MTLPrimitiveType::Triangle,
-                index_count as u64,
-                metal::MTLIndexType::UInt32,
-                &self.buffer_manager.index_buffer,
-                0,
-            );
-        } else {
-            println!("Drawing primitives");
-            encoder.draw_primitives(metal::MTLPrimitiveType::Triangle, 0, vertex_count as u64);
-        }
-
-        encoder.end_encoding();
-        command_buffer.present_drawable(drawable);
-        command_buffer.commit();
-
-        println!("Draw call completed");
-
-        Ok(())
+        Ok(RenderPass::new(encoder, viewport))
     }
 
-    fn present_frame(&mut self) -> Result<(), RendererError> {
-        // The actual submission is done in the draw method,
-        // so this method is left empty or used for any post-frame operations
-        Ok(())
+    // fn draw_large_single_vertex(
+    //     &mut self,
+    //     vertex_count: u32,
+    //     index_count: u32,
+    // ) -> Result<(), RendererError> {
+    //     println!("Drawing: {vertex_count} vertices, {index_count} indices");
+
+    //     let command_buffer = self.command_queue.new_command_buffer();
+    //     let descriptor = metal::RenderPassDescriptor::new();
+
+    //     let drawable = self
+    //         .layer
+    //         .next_drawable()
+    //         .ok_or(RendererError::DrawFailed("No next drawable".to_string()))?;
+
+    //     let texture = drawable.texture();
+
+    //     let color_attachment = descriptor.color_attachments().object_at(0).unwrap();
+    //     color_attachment.set_texture(Some(texture));
+    //     color_attachment.set_load_action(metal::MTLLoadAction::Clear);
+    //     color_attachment.set_clear_color(metal::MTLClearColor::new(0.1, 0.1, 0.1, 1.0)); // Dark gray background
+    //     color_attachment.set_store_action(metal::MTLStoreAction::Store);
+
+    //     let encoder = command_buffer.new_render_command_encoder(descriptor);
+    //     encoder.set_render_pipeline_state(&self.pipeline_state);
+
+    //     // Set the viewport
+    //     encoder.set_viewport(self.viewport.to_metal_viewport());
+
+    //     // Set the uniform buffer
+    //     encoder.set_vertex_buffer(1, Some(&self.uniform_buffer), 0);
+
+    //     // Set vertex buffer
+    //     encoder.set_vertex_buffer(0, Some(&self.buffer_manager.vertex_buffer), 0);
+
+    //     let vertex_count = self.buffer_manager.get_vertex_count();
+    //     let index_count = self.buffer_manager.get_index_count();
+
+    //     if index_count > 0 {
+    //         println!("Drawing indexed primitives");
+    //         encoder.draw_indexed_primitives(
+    //             metal::MTLPrimitiveType::Triangle,
+    //             index_count as u64,
+    //             metal::MTLIndexType::UInt32,
+    //             &self.buffer_manager.index_buffer,
+    //             0,
+    //         );
+    //     } else {
+    //         println!("Drawing primitives");
+    //         encoder.draw_primitives(metal::MTLPrimitiveType::Triangle, 0, vertex_count as u64);
+    //     }
+
+    //     encoder.end_encoding();
+    //     command_buffer.present_drawable(drawable);
+    //     command_buffer.commit();
+
+    //     println!("Draw call completed");
+
+    //     Ok(())
+    // }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RenderPass;
+    use metal::{Device, MTLViewport};
+
+    #[test]
+    fn test_render_pass_creation() {
+        let device = Device::system_default().expect("No Metal device found");
+        let command_queue = device.new_command_queue();
+        let command_buffer = command_queue.new_command_buffer();
+        let descriptor = metal::RenderPassDescriptor::new();
+        let encoder = command_buffer.new_render_command_encoder(&descriptor);
+        let viewport = MTLViewport {
+            originX: 0.0,
+            originY: 0.0,
+            width: 800.0,
+            height: 600.0,
+            znear: 0.0,
+            zfar: 1.0,
+        };
+
+        let render_pass = RenderPass::new(encoder, viewport);
+        assert_eq!(render_pass.viewport.width, 800.0);
+        assert_eq!(render_pass.viewport.height, 600.0);
     }
 }

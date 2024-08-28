@@ -1,7 +1,54 @@
-use crate::renderer::RendererError;
-use metal::{Device, MTLPixelFormat, RenderPipelineState};
+use crate::renderer::{common::RenderPipelineId, RendererError};
+use metal::{Device, MTLDataType, MTLPixelFormat, RenderPipelineDescriptor, RenderPipelineState};
+use std::{ffi::c_void, num::NonZeroU32};
 
-pub fn create_render_pipeline(device: &Device) -> Result<RenderPipelineState, RendererError> {
+pub struct RenderPipelineCache {
+    device: Device,
+    pipelines: Vec<Option<RenderPipelineState>>,
+    free_ids: Vec<RenderPipelineId>,
+}
+
+impl RenderPipelineCache {
+    pub fn new(device: &Device) -> Result<Self, RendererError> {
+        Ok(RenderPipelineCache {
+            device: device.clone(),
+            pipelines: Vec::new(),
+            free_ids: Vec::new(),
+        })
+    }
+
+    pub fn create_pipeline_state(
+        &mut self,
+        descriptor: &RenderPipelineDescriptor,
+    ) -> Result<RenderPipelineId, RendererError> {
+        let pipeline_state = self
+            .device
+            .new_render_pipeline_state(descriptor)
+            .map_err(|e| RendererError::PipelineCreationFailed(e.to_string()))?;
+
+        let id = if let Some(id) = self.free_ids.pop() {
+            self.pipelines[id.0.get() as usize - 1] = Some(pipeline_state);
+            id
+        } else {
+            let id = RenderPipelineId(
+                NonZeroU32::new((self.pipelines.len() + 1) as u32)
+                    .expect("Pipeline count overflow"),
+            );
+            self.pipelines.push(Some(pipeline_state));
+            id
+        };
+
+        Ok(id)
+    }
+
+    pub fn get_pipeline_state(&self, id: RenderPipelineId) -> Option<&RenderPipelineState> {
+        self.pipelines.get(id.0.get() as usize - 1)?.as_ref()
+    }
+}
+
+pub fn create_default_pipeline_descriptor(
+    device: &Device,
+) -> Result<RenderPipelineDescriptor, RendererError> {
     println!("Loading pre-compiled shaders...");
 
     // Create compilation options
@@ -20,10 +67,23 @@ pub fn create_render_pipeline(device: &Device) -> Result<RenderPipelineState, Re
         print!(" - {function}");
     }
 
-    let vertex_function = library.get_function("vertex_main", None).map_err(|e| {
-        println!("Failed to get vertex_main function: {:?}", e);
-        RendererError::ShaderFunctionNotFound("vertex_main".to_string())
-    })?;
+    let function_constants = metal::FunctionConstantValues::new();
+    let false_value: bool = false;
+    let true_value: bool = true;
+    function_constants.set_constant_value_at_index(
+        &false_value as *const bool as *const c_void,
+        MTLDataType::Bool,
+        0,
+    );
+    function_constants.set_constant_value_at_index(
+        &true_value as *const bool as *const c_void,
+        MTLDataType::Bool,
+        1,
+    );
+
+    let vertex_function = library
+        .get_function("vertex_main", Some(function_constants))
+        .map_err(|_| RendererError::ShaderFunctionNotFound("vertex_main".to_string()))?;
     let fragment_function = library
         .get_function("fragment_main", None)
         .map_err(|_| RendererError::ShaderFunctionNotFound("fragment_main".to_string()))?;
@@ -128,22 +188,20 @@ pub fn create_render_pipeline(device: &Device) -> Result<RenderPipelineState, Re
 
     pipeline_descriptor.set_vertex_descriptor(Some(vertex_descriptor));
 
-    println!("Render pipeline state created");
     // Create the render pipeline state
-    device
-        .new_render_pipeline_state(&pipeline_descriptor)
-        .map_err(|e| RendererError::PipelineCreationFailed(e.to_string()))
+    println!("Render pipeline state created");
+    Ok(pipeline_descriptor)
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::renderer::backend::metal::pipeline::create_render_pipeline;
+    use crate::renderer::backend::metal::pipeline::create_default_pipeline_descriptor;
     use metal::Device;
 
     #[test]
-    fn test_create_render_pipeline() {
+    fn test_create_default_pipeline_descriptor() {
         let device = Device::system_default().expect("No Metal device found");
-        let result = create_render_pipeline(&device);
+        let result = create_default_pipeline_descriptor(&device);
         assert!(
             result.is_ok(),
             "Failed to create render pipeline: {:?}",

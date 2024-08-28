@@ -1,6 +1,6 @@
 #ifndef ShaderTypes_h
 #define ShaderTypes_h
-
+#include <simd/simd.h>
 #include <metal_stdlib>
 using namespace metal;
 

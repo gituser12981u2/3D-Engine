@@ -96,6 +96,8 @@ jobs:
         run: |
           # Parse the most recent commit message
           COMMIT_MSG=$(git log -1 --pretty=%B)
+          # Get current version
+          CURRENT_VERSION=$(cargo pkgid | cut -d# -f2)
           # Determine version bump type
           if echo "$COMMIT_MSG" | grep -qE '^BREAKING CHANGE:'; then
             BUMP_TYPE="major"
@@ -105,9 +107,18 @@ jobs:
             BUMP_TYPE="patch"
           fi
           # Bump version in Cargo.toml
-          cargo bump $BUMP_TYPE
-          # Get the new version
-          NEW_VERSION=$(cargo pkgid | cut -d# -f2)
+          if [[ $CURRENT_VERSION == *"-alpha"* ]]; then
+            # If it's an alpha version, increment the alpha number
+            BASE_VERSION=$(echo $CURRENT_VERSION | cut -d- -f1)
+            ALPHA_NUM=$(echo $CURRENT_VERSION | cut -d. -f4)
+            NEW_ALPHA_NUM=$((ALPHA_NUM + 1))
+            NEW_VERSION="${BASE_VERSION}-alpha.${NEW_ALPHA_NUM}"
+            cargo set-version $NEW_VERSION
+          else
+            # If it's not an alpha version, bump according to semantic versioning
+            cargo bump $BUMP_TYPE
+            NEW_VERSION=$(cargo pkgid | cut -d# -f2)
+          fi
           echo "::set-output name=new_version::$NEW_VERSION"
       - name: Commit and push changes
         run: |
