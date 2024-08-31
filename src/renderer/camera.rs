@@ -97,14 +97,6 @@ mod tests {
     use glam::{Mat3, Mat4, Vec3};
     use std::panic;
 
-    fn log_test_start(test_name: &str) {
-        println!("Starting test: {test_name}")
-    }
-
-    fn log_test_end(test_name: &str) {
-        println!("Finished test: {test_name}")
-    }
-
     fn vec3_approx_eq(a: Vec3, b: Vec3, epsilon: f32) -> bool {
         (a.x - b.x).abs() < epsilon && (a.y - b.y).abs() < epsilon && (a.z - b.z).abs() < epsilon
     }
@@ -146,7 +138,6 @@ mod tests {
 
     #[test]
     fn test_view_matrix() {
-        log_test_start("test_view_matrix");
         let camera_pos = Vec3::new(0.0, 0.0, 5.0);
         let camera = Camera::new(camera_pos, 45.0, 1.0, 0.1, 100.0);
         let view_matrix = camera.get_view_matrix();
@@ -191,13 +182,10 @@ mod tests {
         );
 
         println!("View Matrix:\n{:?}", view_matrix);
-
-        log_test_end("test_view_matrix");
     }
 
     #[test]
     fn test_projection_matrix() {
-        log_test_start("test_projection_matrix");
         let fov = 45.0f32;
         let aspect_ratio = 16.0 / 9.0;
         let near = 0.1;
@@ -239,7 +227,6 @@ mod tests {
 
     #[test]
     fn test_camera_movement() {
-        log_test_start("test_camera_movement");
         let result = panic::catch_unwind(|| {
             let position = Vec3::ZERO;
             let fov = 45.0;
@@ -275,11 +262,9 @@ mod tests {
 
     #[test]
     fn test_mouse_movement() {
-        log_test_start("test_mouse_movement");
         let mut camera = Camera::new(Vec3::ZERO, 45.0, 1.0, 0.1, 100.0);
         camera.process_mouse_movement(10.0, 0.0);
         let forward = -camera.orientation * Vec3::Z;
         assert!(forward.x < 0.0); // Camera should have rotated to the left
-        log_test_end("test_mouse_movement");
     }
 }
