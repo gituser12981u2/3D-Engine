@@ -13,6 +13,10 @@ jobs:
   test:
     name: Test
     runs-on: macos-latest
+    env:
+      METAL_DEVICE_WRAPPER_TYPE: 1
+      METAL_DEBUG_ERROR_MODE: 10
+      RUST_BACKTRACE: 1
     steps:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
@@ -22,10 +26,8 @@ jobs:
           override: true
       - name: Run tests
         run: |
-          METAL_DEVICE_WRAPPER_TYPE=1 cargo test -- --nocapture
-        env:
-          METAL_DEVICE_WRAPPER_TYPE: 1
-          METAL_DEBUG_ERROR_MODE: 10
+          cargo test --verbose -- --nocapture
+      # METAL_DEVICE_WRAPPER_TYPE=1 cargo test -- --nocapture
       # - uses: actions-rs/cargo@v1
       #   with:
       #     command: test
