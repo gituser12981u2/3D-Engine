@@ -1,8 +1,7 @@
-use common::vector3::RenderVector3;
-use renderer::{Color, RendererSystem};
+use glam::{Mat4, Quat, Vec3};
+use renderer::{shape_builders::shape_builder::ShapeBuilder, Color, InstanceData, RendererSystem};
 use std::time::Instant;
 
-mod common;
 mod physics;
 mod renderer;
 
@@ -10,70 +9,138 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut renderer_system = RendererSystem::new(800, 600, "Metal Renderer")?;
     let start_time = Instant::now();
 
-    renderer_system.set_render_callback(move |renderer| {
+    renderer_system.set_render_callback(move |r| {
+        // Examples:
         let elapsed = start_time.elapsed().as_secs_f32();
-        let rotation = elapsed * 0.5; // Rotate the pyramid
+        // TODO: add documentation and implementation examples to documentation
 
-        // Define the pyramid vertices
-        let apex = RenderVector3::new(0.0, 0.5, 0.0);
-        let base1 = RenderVector3::new(-0.5, -0.5, -0.5);
-        let base2 = RenderVector3::new(0.5, -0.5, -0.5);
-        let base3 = RenderVector3::new(0.5, -0.5, 0.5);
-        let base4 = RenderVector3::new(-0.5, -0.5, 0.5);
+        // Non-indexed, non-instanced primitive triangle
+        r.create_triangle(
+            Vec3::new(0.0, 0.5 + elapsed.sin(), 0.0), // Top center
+            Vec3::new(-0.5, -0.5, 0.0),               // Bottom left
+            Vec3::new(0.5, -0.5, 0.0),                // Bottom right
+            Color::new(1.0, 0.0, 0.0, 1.0),           // Green color
+        )
+        .as_primitive()
+        .with_transform(Mat4::from_translation(Vec3::new(1.5, 0.0, 0.0)))
+        .draw(r);
 
-        // Rotate vertices
-        let rotate = |v: RenderVector3| {
-            let x = v.x * rotation.cos() - v.z * rotation.sin();
-            let z = v.x * rotation.sin() + v.z * rotation.cos();
-            RenderVector3::new(x, v.y, z)
-        };
-
-        // Draw pyramid faces
-        renderer.draw_triangle(
-            rotate(apex),
-            rotate(base1),
-            rotate(base2),
+        // Indexed primitive triangle
+        r.create_triangle(
+            Vec3::new(0.0, 0.5, 0.0),
+            Vec3::new(-0.5, -0.5, 0.0),
+            Vec3::new(0.5, -0.5, 0.0),
             Color::new(1.0, 0.0, 0.0, 1.0),
-        )?; // Front
-        renderer.draw_triangle(
-            rotate(apex),
-            rotate(base2),
-            rotate(base3),
-            Color::new(0.0, 1.0, 0.0, 1.0),
-        )?; // Right
-        renderer.draw_triangle(
-            rotate(apex),
-            rotate(base3),
-            rotate(base4),
-            Color::new(0.0, 0.0, 1.0, 1.0),
-        )?; // Back
-        renderer.draw_triangle(
-            rotate(apex),
-            rotate(base4),
-            rotate(base1),
-            Color::new(1.0, 1.0, 0.0, 1.0),
-        )?; // Left
-            // renderer.draw_triangle(apex, base1, base2, Color::new(1.0, 0.0, 0.0, 1.0))?; // Front
-            // renderer.draw_triangle(apex, base2, base3, Color::new(0.0, 1.0, 0.0, 1.0))?; // Right
-            // renderer.draw_triangle(apex, base3, base4, Color::new(0.0, 0.0, 1.0, 1.0))?; // Back
-            // renderer.draw_triangle(apex, base4, base1, Color::new(1.0, 1.0, 0.0, 1.0))?; // Left
+        )
+        .as_primitive()
+        .with_indices(vec![0, 1, 2])
+        .with_transform(Mat4::from_translation(Vec3::new(1.5, 1.0, 0.0)))
+        .draw(r);
 
-        // renderer.draw_grid(20.0, 20)?;
+        // Instanced primitive triangle
+        let instance_data = vec![
+            InstanceData::new(
+                Mat4::from_translation(Vec3::new(-1.5, -1.0, 0.0)),
+                Color::new(1.0, 0.0, 0.0, 1.0),
+            ),
+            InstanceData::new(
+                Mat4::from_translation(Vec3::new(-1.5, -1.5, 0.0)),
+                Color::new(1.0, 0.0, 0.0, 1.0),
+            ),
+            InstanceData::new(
+                Mat4::from_translation(Vec3::new(-1.5, -2.0, 0.0)),
+                Color::new(1.0, 0.0, 0.0, 1.0),
+            ),
+        ];
+        r.create_triangle(
+            Vec3::new(0.0, 0.25, 0.0),
+            Vec3::new(-0.25, -0.25, 0.0),
+            Vec3::new(0.25, -0.25, 0.0),
+            Color::new(1.0, 1.0, 1.0, 1.0),
+        )
+        .as_primitive()
+        .with_instances(instance_data)
+        .draw(r);
 
-        // renderer.draw_triangle(
-        //     RenderVector3::new(0.0, 0.5 + elapsed.sin(), 0.0), // Top center
-        //     RenderVector3::new(-0.5, -0.5, 0.0),               // Bottom left
-        //     RenderVector3::new(0.5, -0.5, 0.0),                // Bottom right
-        //     Color::new(1.0, 0.0, 0.0, 1.0),                    // Red color
-        // )?;
+        // Custom shape
+        let pentagon_vertices = vec![
+            (Vec3::new(0.0, 0.5, 0.0), Color::new(1.0, 0.0, 0.0, 1.0)),
+            (Vec3::new(-0.47, 0.15, 0.0), Color::new(0.0, 1.0, 0.0, 1.0)),
+            (Vec3::new(-0.29, -0.4, 0.0), Color::new(0.0, 0.0, 1.0, 1.0)),
+            (Vec3::new(0.29, -0.4, 0.0), Color::new(1.0, 1.0, 0.0, 1.0)),
+            (Vec3::new(0.47, 0.15, 0.0), Color::new(0.0, 1.0, 1.0, 1.0)),
+        ];
+        r.create_shape(pentagon_vertices)
+            .as_primitive()
+            .with_indices(vec![0, 1, 2, 0, 2, 3, 0, 3, 4])
+            .draw(r);
 
-        // renderer.draw_rectangle(
-        //     RenderVector3::new(-0.5, 0.5, 0.0),
-        //     RenderVector3::new(0.5, -0.5, 0.0),
-        //     Color::new(0.0, 1.0, 0.0, 1.0),
-        // )?;
+        // Non-indexed, non-instanced mesh triangle
+        r.create_triangle(
+            Vec3::new(-0.5, -0.5, 0.0),
+            Vec3::new(0.5, -0.5, 0.0),
+            Vec3::new(0.0, 0.5, 0.0),
+            Color::new(1.0, 0.0, 0.0, 1.0),
+        )
+        .as_mesh()
+        .with_transform(Mat4::from_translation(Vec3::new(-1.5, 0.0, 0.0)))
+        .draw(r);
 
-        Ok(())
+        // Define pyramid dimensions
+        let base_width = 1.0;
+        let height = 1.5;
+        let half_width = base_width / 2.0;
+
+        // Define pyramid vertices
+        let pyramid_vertices = vec![
+            // Apex
+            (Vec3::new(0.0, height, 0.0), Color::new(1.0, 0.0, 0.0, 1.0)),
+            // Base vertices
+            (
+                Vec3::new(-half_width, 0.0, -half_width),
+                Color::new(0.0, 1.0, 0.0, 1.0),
+            ),
+            (
+                Vec3::new(half_width, 0.0, -half_width),
+                Color::new(0.0, 0.0, 1.0, 1.0),
+            ),
+            (
+                Vec3::new(half_width, 0.0, half_width),
+                Color::new(1.0, 1.0, 0.0, 1.0),
+            ),
+            (
+                Vec3::new(-half_width, 0.0, half_width),
+                Color::new(0.0, 1.0, 1.0, 1.0),
+            ),
+        ];
+        // Define indices for the pyramid faces
+        let pyramid_indices = vec![
+            0, 1, 2, // Front face
+            0, 2, 3, // Right face
+            0, 3, 4, // Back face
+            0, 4, 1, // Left face
+            1, 3, 2, // Base (part 1)
+            1, 4, 3, // Base (part 2)
+        ];
+        r.create_shape(pyramid_vertices.clone())
+            .with_indices(pyramid_indices.clone())
+            .with_transform(Mat4::from_rotation_translation(
+                Quat::from_rotation_y(elapsed),
+                Vec3::new(0.0, 0.0, -3.0),
+            ))
+            .draw(r);
+
+        // Create a pyramid mesh
+        r.create_mesh(pyramid_vertices)
+            .with_indices(pyramid_indices)
+            .with_transform(Mat4::from_rotation_translation(
+                Quat::from_rotation_y(elapsed),
+                Vec3::new(0.0, 0.0, -3.0),
+            ))
+            .draw(r);
+
+        r.update();
+        r.render()
     });
 
     renderer_system.run()?;

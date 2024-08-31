@@ -15,7 +15,8 @@ pub fn compile_metal_shaders() {
             let file_stem = path.file_stem().unwrap().to_str().unwrap();
             let air_file = format!("{}/{}.air", out_dir, file_stem);
 
-            Command::new("xcrun")
+            println!("Compiling shader: {:?}", path);
+            let status = Command::new("xcrun")
                 .args([
                     "-sdk",
                     "macosx",
@@ -27,6 +28,10 @@ pub fn compile_metal_shaders() {
                 ])
                 .status()
                 .expect("Failed to compile shader");
+
+            if !status.success() {
+                panic!("Failed to compile shader: {:?}", path);
+            }
         }
     }
 
@@ -44,7 +49,11 @@ pub fn compile_metal_shaders() {
     }
 
     command.args(["-o", &metallib_file]);
-    command.status().expect("Failed to create metallib");
+    let status = command.status().expect("Failed to create metallib");
+
+    if !status.success() {
+        panic!("Failed to create metallib");
+    }
 
     println!("cargo:rustc-env=METAL_SHADER_LIB={}", metallib_file);
 }

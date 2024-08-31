@@ -1,6 +1,79 @@
 use core::fmt;
-
+use metal::{MTLIndexType, MTLPrimitiveType};
 use raw_window_handle::HandleError;
+use std::num::NonZeroU32;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct BufferId(pub NonZeroU32);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct RenderPipelineId(pub NonZeroU32);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct TextureId(pub NonZeroU32);
+
+impl From<PrimitiveType> for MTLPrimitiveType {
+    fn from(pt: PrimitiveType) -> Self {
+        match pt {
+            PrimitiveType::Point => MTLPrimitiveType::Point,
+            PrimitiveType::Line => MTLPrimitiveType::Line,
+            PrimitiveType::LineStrip => MTLPrimitiveType::LineStrip,
+            PrimitiveType::Triangle => MTLPrimitiveType::Triangle,
+            PrimitiveType::TriangleStrip => MTLPrimitiveType::TriangleStrip,
+        }
+    }
+}
+
+impl From<IndexType> for MTLIndexType {
+    fn from(it: IndexType) -> Self {
+        match it {
+            IndexType::UInt16 => MTLIndexType::UInt16,
+            IndexType::UInt32 => MTLIndexType::UInt32,
+        }
+    }
+}
+
+pub enum BackendDrawCommand {
+    Basic {
+        primitive_type: PrimitiveType,
+        vertex_start: u64,
+        vertex_count: u64,
+    },
+    Indexed {
+        primitive_type: PrimitiveType,
+        index_count: u64,
+        index_type: IndexType,
+        index_buffer_offset: u64,
+    },
+    Instanced {
+        primitive_type: PrimitiveType,
+        vertex_start: u64,
+        vertex_count: u64,
+        instance_count: u64,
+    },
+    IndexedInstanced {
+        primitive_type: PrimitiveType,
+        index_count: u64,
+        index_type: IndexType,
+        index_buffer_offset: u64,
+        instance_count: u64,
+    },
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum PrimitiveType {
+    Point,
+    Line,
+    LineStrip,
+    Triangle,
+    TriangleStrip,
+}
+
+#[derive(Debug)]
+pub enum IndexType {
+    UInt16,
+    UInt32,
+}
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Color {
@@ -13,6 +86,12 @@ pub struct Color {
 impl Color {
     pub fn new(r: f32, g: f32, b: f32, a: f32) -> Self {
         Color { r, g, b, a }
+    }
+}
+
+impl From<Color> for [f32; 4] {
+    fn from(color: Color) -> Self {
+        [color.r, color.g, color.b, color.a]
     }
 }
 
@@ -47,9 +126,12 @@ pub enum RendererError {
     DrawFailed(String),
     WindowCreationFailed(String),
     EventLoopError(String),
-    UnsupportedPlatform,
     WindowHandleError(String),
     BufferOverflow,
+    InvalidTextureId,
+    InvalidPipelineId,
+    InvalidMeshId,
+    UnsupportedPlatform,
 }
 
 impl fmt::Display for RendererError {
@@ -80,6 +162,15 @@ impl fmt::Display for RendererError {
             }
             RendererError::BufferOverflow => {
                 write!(f, "Buffer overflow")
+            }
+            RendererError::InvalidTextureId => {
+                write!(f, "Invalid texture Id")
+            }
+            RendererError::InvalidPipelineId => {
+                write!(f, "Invalid pipeline Id")
+            }
+            RendererError::InvalidMeshId => {
+                write!(f, "Invalid mesh Id")
             }
         }
     }

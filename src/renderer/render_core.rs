@@ -1,11 +1,19 @@
 use super::{
-    backend::{metal::MetalBackend, GraphicsBackend},
-    common::{Color, RendererError, Vertex},
-    Camera,
+    backend::GraphicsBackend,
+    common::{BackendDrawCommand, IndexType, PrimitiveType, Vertex},
+    mesh::{Mesh, MeshStorage},
+    render_queue::DrawCommand,
+    shape_builders::{
+        shape_builder::{vec3_color_to_vertex, PrimitiveBuilder},
+        MeshBuilder, TriangleBuilder,
+    },
+    Camera, Color, RendererError,
 };
-use crate::{common::vector3::RenderVector3, renderer::camera::CameraMovement};
-use glam::Vec3;
-use std::{cell::RefCell, rc::Rc};
+use crate::renderer::{
+    backend::metal::MetalBackend, camera::CameraMovement, render_queue::RenderQueue,
+};
+use glam::{Quat, Vec3};
+use std::{cell::RefCell, mem, rc::Rc};
 use winit::{
     dpi::PhysicalSize,
     event::{Event, KeyEvent, MouseScrollDelta, WindowEvent},
@@ -14,28 +22,28 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
-/// Renderer manages the rendering process and window
 pub struct Renderer {
     backend: MetalBackend,
+    mesh_storage: MeshStorage,
+    render_queue: RenderQueue,
+    // TODO: implement Material Manager and Scene Graph
+    // material_manager: MaterialManager,
+    // scene_graph: SceneGraph,
     window: Window,
     camera: Camera,
     last_frame_time: std::time::Instant,
 }
 
-// Define a type alias for the render callback
-pub type RenderCallback = dyn Fn(&mut Renderer) -> Result<(), RendererError>;
-
-pub struct RendererSystem {
-    renderer: Rc<RefCell<Renderer>>,
-    event_loop: EventLoop<()>,
-    render_callback: Box<RenderCallback>,
-}
+#[derive(Clone, Copy, PartialEq)]
+pub struct ObjectId(pub usize);
 
 impl Renderer {
     // Create a new Renderer with the specified window dimensions and title
     pub fn new(window: Window) -> Result<Self, RendererError> {
         let backend = MetalBackend::new(&window)?;
+        let device = backend.device().clone();
 
+        // Debug information
         let size = window.inner_size();
         let scale_factor = window.scale_factor();
         println!("Window size: {:?}, Scale factor: {scale_factor}", size);
@@ -50,71 +58,305 @@ impl Renderer {
 
         Ok(Renderer {
             backend,
+            mesh_storage: MeshStorage::new(device),
+            render_queue: RenderQueue::new(),
             window,
             camera,
             last_frame_time: std::time::Instant::now(),
         })
     }
 
+    pub fn update(&mut self) {
+        let view_projection_matrix =
+            self.camera.get_projection_matrix() * self.camera.get_view_matrix();
+
+        self.backend
+            .update_uniform_buffer(&view_projection_matrix)
+            .unwrap();
+
+        // TODO: sort batches in an efficient manner
+        // TODO: Implement Frustum Culling
+    }
+
     pub fn render(&mut self) -> Result<(), RendererError> {
-        let view_matrix = self.camera.get_view_matrix();
-        let projection_matrix = self.camera.get_projection_matrix();
-        let view_projection_matrix = projection_matrix * view_matrix;
+        let draw_commands = mem::take(&mut self.render_queue.draw_commands);
 
-        println!("View-Projection Matrix: {:?}", view_projection_matrix);
+        for draw_command in draw_commands {
+            match &draw_command {
+                DrawCommand::Mesh { mesh_id, .. } => {
+                    if let Some(mesh) = self.mesh_storage.get_mesh(*mesh_id) {
+                        self.backend.update_vertex_buffer(&mesh.vertices)?;
+                        if let Some(indices) = &mesh.indices {
+                            self.backend.update_index_buffer(indices)?;
+                        }
+                    } else {
+                        return Err(RendererError::InvalidMeshId);
+                    }
+                }
+                DrawCommand::Primitive {
+                    vertices, indices, ..
+                } => {
+                    self.backend.update_vertex_buffer(vertices)?;
+                    if let Some(indices) = indices {
+                        self.backend.update_index_buffer(indices)?;
+                    }
+                }
+            }
 
-        self.backend.update_uniforms(view_projection_matrix);
+            if let Some(instance_data) = draw_command.instance_data() {
+                self.backend.update_instance_buffer(instance_data)?;
+            }
 
-        self.backend.prepare_frame()?;
-        self.backend.present_frame()?;
+            let backend_draw_command = self.create_backend_draw_command(&draw_command)?;
+            self.backend.draw(backend_draw_command)?;
+        }
+
+        // Clear the render queue after drawing
+        self.render_queue.clear();
 
         Ok(())
+    }
+
+    fn create_backend_draw_command(
+        &self,
+        draw_command: &DrawCommand,
+    ) -> Result<BackendDrawCommand, RendererError> {
+        match draw_command {
+            DrawCommand::Mesh { mesh_id, .. } => {
+                if let Some(mesh) = self.mesh_storage.get_mesh(*mesh_id) {
+                    Ok(self.create_backend_draw_command_from_mesh(mesh, draw_command))
+                } else {
+                    Err(RendererError::InvalidMeshId)
+                }
+            }
+            DrawCommand::Primitive {
+                vertices,
+                indices,
+                primitive_type,
+                ..
+            } => Ok(self.create_backend_draw_command_from_primitive(
+                vertices,
+                indices,
+                primitive_type,
+                draw_command,
+            )),
+        }
+    }
+
+    fn create_backend_draw_command_from_mesh(
+        &self,
+        mesh: &Mesh,
+        draw_command: &DrawCommand,
+    ) -> BackendDrawCommand {
+        if let Some(instance_data) = draw_command.instance_data() {
+            if mesh.indices.is_some() {
+                BackendDrawCommand::IndexedInstanced {
+                    primitive_type: mesh.primitive_type,
+                    index_count: mesh.indices.as_ref().unwrap().len() as u64,
+                    index_type: IndexType::UInt32,
+                    index_buffer_offset: 0,
+                    instance_count: instance_data.len() as u64,
+                }
+            } else {
+                BackendDrawCommand::Instanced {
+                    primitive_type: mesh.primitive_type,
+                    vertex_start: 0,
+                    vertex_count: mesh.vertices.len() as u64,
+                    instance_count: instance_data.len() as u64,
+                }
+            }
+        } else if mesh.indices.is_some() {
+            BackendDrawCommand::Indexed {
+                primitive_type: mesh.primitive_type,
+                index_count: mesh.indices.as_ref().unwrap().len() as u64,
+                index_type: IndexType::UInt32,
+                index_buffer_offset: 0,
+            }
+        } else {
+            BackendDrawCommand::Basic {
+                primitive_type: mesh.primitive_type,
+                vertex_start: 0,
+                vertex_count: mesh.vertices.len() as u64,
+            }
+        }
+    }
+
+    pub fn create_backend_draw_command_from_primitive(
+        &self,
+        vertices: &[Vertex],
+        indices: &Option<Vec<u32>>,
+        primitive_type: &PrimitiveType,
+        draw_command: &DrawCommand,
+    ) -> BackendDrawCommand {
+        if let Some(instance_data) = draw_command.instance_data() {
+            if let Some(indices) = indices {
+                BackendDrawCommand::IndexedInstanced {
+                    primitive_type: *primitive_type,
+                    index_count: indices.len() as u64,
+                    index_type: IndexType::UInt32,
+                    index_buffer_offset: 0,
+                    instance_count: instance_data.len() as u64,
+                }
+            } else {
+                BackendDrawCommand::Instanced {
+                    primitive_type: *primitive_type,
+                    vertex_start: 0,
+                    vertex_count: vertices.len() as u64,
+                    instance_count: instance_data.len() as u64,
+                }
+            }
+        } else if let Some(indices) = indices {
+            BackendDrawCommand::Indexed {
+                primitive_type: *primitive_type,
+                index_count: indices.len() as u64,
+                index_type: IndexType::UInt32,
+                index_buffer_offset: 0,
+            }
+        } else {
+            BackendDrawCommand::Basic {
+                primitive_type: *primitive_type,
+                vertex_start: 0,
+                vertex_count: vertices.len() as u64,
+            }
+        }
+    }
+
+    pub fn add_mesh(&mut self, mesh_builder: MeshBuilder) -> usize {
+        self.mesh_storage.add_mesh(mesh_builder)
+    }
+
+    #[allow(dead_code)]
+    pub fn draw_immediate(&mut self, draw_command: DrawCommand) {
+        self.render_queue.add_draw_command(draw_command);
     }
 
     // TODO: implement resize in the backend
     pub fn resize(&mut self, new_size: PhysicalSize<u32>) {
         self.camera
             .set_aspect_ratio(new_size.width as f32 / new_size.height as f32);
-        // Update the backend if necessary
+        // TODO: Update the backend
         // self.backend.resize(new_size);
     }
 
-    /// Draw a triangle with the specified vertices and color
-    pub fn draw_triangle(
+    // TODO: Find a way to tell rust these are exposed API methods so they should'nt be counted as dead code
+    #[allow(dead_code)]
+    pub fn create_triangle(
         &mut self,
-        v1: RenderVector3,
-        v2: RenderVector3,
-        v3: RenderVector3,
+        v1: Vec3,
+        v2: Vec3,
+        v3: Vec3,
+        color: Color,
+    ) -> TriangleBuilder {
+        TriangleBuilder::new(v1, v2, v3, color)
+    }
+
+    #[allow(dead_code)]
+    pub fn create_shape(&mut self, vertices: Vec<(Vec3, Color)>) -> PrimitiveBuilder {
+        let vertices = vertices
+            .into_iter()
+            .map(|(pos, color)| vec3_color_to_vertex(pos, color))
+            .collect();
+        PrimitiveBuilder::new(vertices, PrimitiveType::Triangle)
+    }
+
+    pub fn create_mesh(&mut self, vertices: Vec<(Vec3, Color)>) -> MeshBuilder {
+        let vertices = vertices
+            .into_iter()
+            .map(|(pos, color)| vec3_color_to_vertex(pos, color))
+            .collect();
+        MeshBuilder::new().with_vertices(vertices)
+    }
+
+    #[allow(dead_code)]
+    pub fn create_pyramid(&mut self, base_width: f32, height: f32, color: [Color; 5]) -> usize {
+        let half_width = base_width / 2.0;
+        let vertices = vec![
+            Vertex {
+                position: [0.0, height, 0.0],
+                color: color[0].into(),
+            }, // Apex
+            Vertex {
+                position: [-half_width, 0.0, -half_width],
+                color: color[1].into(),
+            }, // Base 1
+            Vertex {
+                position: [half_width, 0.0, -half_width],
+                color: color[2].into(),
+            }, // Base 2
+            Vertex {
+                position: [half_width, 0.0, half_width],
+                color: color[3].into(),
+            }, // Base 3
+            Vertex {
+                position: [-half_width, 0.0, half_width],
+                color: color[4].into(),
+            }, // Base 4
+        ];
+
+        let indices = vec![
+            0, 1, 2, // Front face
+            0, 2, 3, // Right face
+            0, 3, 4, // Back face
+            0, 4, 1, // Left face
+            1, 3, 2, // Base (part 1)
+            1, 4, 3, // Base (part 2)
+        ];
+
+        let mesh_builder = MeshBuilder::new()
+            .with_vertices(vertices)
+            .with_indices(indices)
+            .with_primitive_type(PrimitiveType::Triangle);
+
+        self.add_mesh(mesh_builder)
+    }
+
+    #[deprecated(since = "0.1.0-alpha.2", note = "please use `create_triangle` instead")]
+    #[allow(dead_code)]
+    // Draw a triangle with the specified vertices and color
+    pub fn draw_primitive_triangle(
+        &mut self,
+        v1: Vec3,
+        v2: Vec3,
+        v3: Vec3,
         color: Color,
     ) -> Result<(), RendererError> {
         let vertices = vec![
             Vertex {
-                position: [v1.x, v1.y, v1.z],
-                color: [color.r, color.g, color.b, color.a],
+                position: v1.to_array(),
+                color: color.into(),
             },
             Vertex {
-                position: [v2.x, v2.y, v2.z],
-                color: [color.r, color.g, color.b, color.a],
+                position: v2.to_array(),
+                color: color.into(),
             },
             Vertex {
-                position: [v3.x, v3.y, v3.z],
-                color: [color.r, color.g, color.b, color.a],
+                position: v3.to_array(),
+                color: color.into(),
             },
         ];
         self.backend.update_vertex_buffer(&vertices)?;
-        self.backend.draw(3, 0)
+
+        let draw_command = BackendDrawCommand::Basic {
+            primitive_type: PrimitiveType::Triangle,
+            vertex_start: 0,
+            vertex_count: 3,
+        };
+
+        self.backend.draw(draw_command)?;
+        Ok(())
     }
 
+    #[deprecated(since = "0.1.0-alpha.2", note = "please use `create_shape` instead")]
     #[allow(dead_code)]
-    /// Draw a rectangle with the specified corners and color
-    pub fn draw_rectangle(
+    // Draw a rectangle with the specified corners and color
+    pub fn draw_primitive_rectangle(
         &mut self,
-        top_left: RenderVector3,
-        bottom_right: RenderVector3,
+        top_left: Vec3,
+        bottom_right: Vec3,
         color: Color,
     ) -> Result<(), RendererError> {
-        let top_right = RenderVector3::new(bottom_right.x, top_left.y, top_left.z);
-        let bottom_left = RenderVector3::new(top_left.x, bottom_right.y, top_left.z);
+        let top_right = Vec3::new(bottom_right.x, top_left.y, top_left.z);
+        let bottom_left = Vec3::new(top_left.x, bottom_right.y, top_left.z);
         let vertices = vec![
             Vertex {
                 position: [top_left.x, top_left.y, top_left.z],
@@ -136,56 +378,60 @@ impl Renderer {
         let indices = vec![0, 1, 2, 1, 3, 2];
         self.backend.update_vertex_buffer(&vertices)?;
         self.backend.update_index_buffer(&indices)?;
-        self.backend.draw(4, 6)
+        // self.backend.draw_large_single_vertex(4, 6)
+
+        let draw_command = BackendDrawCommand::Basic {
+            primitive_type: PrimitiveType::Triangle,
+            vertex_start: 0,
+            vertex_count: 3,
+        };
+
+        self.backend.draw(draw_command)?;
+        Ok(())
     }
 
+    #[deprecated(since = "0.1.0-alpha.2", note = "please use `create_shape` instead")]
     #[allow(dead_code)]
-    pub fn draw_grid(&mut self, size: f32, divisions: u32) -> Result<(), RendererError> {
-        let step = size / divisions as f32;
-        let half_size = size / 2.0;
+    pub fn draw_primitive_pyramid(
+        &mut self,
+        base_width: f32,
+        height: f32,
+        position: Vec3,
+        rotation: Quat,
+        colors: [Color; 4],
+    ) -> Result<(), RendererError> {
+        let half_width = base_width / 2.0;
+        let apex = position + Vec3::new(0.0, height, 0.0);
+        let base1 = position + Vec3::new(-half_width, 0.0, -half_width);
+        let base2 = position + Vec3::new(half_width, 0.0, -half_width);
+        let base3 = position + Vec3::new(half_width, 0.0, half_width);
+        let base4 = position + Vec3::new(-half_width, 0.0, half_width);
 
-        let mut vertices = Vec::new();
-        let mut indices = Vec::new();
+        // Rotate vertices
+        let rotate = |v: Vec3| position + rotation * v;
 
-        // Create grid lines
-        for i in 0..=divisions {
-            let pos = -half_size + i as f32 * step;
+        #[allow(deprecated)]
+        self.draw_primitive_triangle(rotate(apex), rotate(base1), rotate(base2), colors[0])?; // Front
 
-            // X-axis line
-            vertices.push(Vertex {
-                position: [-half_size, 0.0, pos],
-                color: [0.5, 0.5, 0.5, 1.0],
-            });
-            vertices.push(Vertex {
-                position: [half_size, 0.0, pos],
-                color: [0.5, 0.5, 0.5, 1.0],
-            });
+        #[allow(deprecated)]
+        self.draw_primitive_triangle(rotate(apex), rotate(base2), rotate(base3), colors[1])?; // Right
 
-            // Z-axis line
-            vertices.push(Vertex {
-                position: [pos, 0.0, -half_size],
-                color: [0.5, 0.5, 0.5, 1.0],
-            });
-            vertices.push(Vertex {
-                position: [pos, 0.0, half_size],
-                color: [0.5, 0.5, 0.5, 1.0],
-            });
+        #[allow(deprecated)]
+        self.draw_primitive_triangle(rotate(apex), rotate(base3), rotate(base4), colors[2])?; // Back
 
-            // Create indices for lines
-            let base_index = i * 4;
-            indices.extend_from_slice(&[
-                base_index,
-                base_index + 1,
-                base_index + 2,
-                base_index + 3,
-            ]);
-        }
+        #[allow(deprecated)]
+        self.draw_primitive_triangle(rotate(apex), rotate(base4), rotate(base1), colors[3])?; // Left
 
-        self.backend.update_vertex_buffer(&vertices)?;
-        self.backend.update_index_buffer(&indices)?;
-        self.backend
-            .draw(vertices.len() as u32, indices.len() as u32)
+        Ok(())
     }
+}
+
+pub type RenderCallback = dyn Fn(&mut Renderer) -> Result<(), RendererError>;
+
+pub struct RendererSystem {
+    renderer: Rc<RefCell<Renderer>>,
+    event_loop: EventLoop<()>,
+    render_callback: Box<RenderCallback>,
 }
 
 impl RendererSystem {
