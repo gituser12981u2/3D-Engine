@@ -16,3 +16,6 @@ raw-window-handle = "0.6.2"
 winit = "0.29.15"
 
 [build-dependencies]
+
+[features]
+skip_metal_tests = []

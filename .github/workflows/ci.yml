@@ -26,11 +26,7 @@ jobs:
           override: true
       - name: Run tests
         run: |
-          cargo test --verbose -- --nocapture --test-threads=1
-      # METAL_DEVICE_WRAPPER_TYPE=1 cargo test -- --nocapture
-      # - uses: actions-rs/cargo@v1
-      #   with:
-      #     command: test
+          cargo test --features skip_metal_tests --verbose -- --nocapture --test-threads=1
 
   fmt:
     name: Rustfmt
