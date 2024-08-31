@@ -394,6 +394,7 @@ mod tests {
 
     #[test]
     fn test_render_pass_creation() {
+        println!("IN TEST-RENDER-PASS-CREATION");
         let device = Device::system_default().expect("No Metal device found");
         let command_queue = device.new_command_queue();
         let command_buffer = command_queue.new_command_buffer();

@@ -166,6 +166,7 @@ mod tests {
 
     #[test]
     fn test_buffer_manager() {
+        println!("IN TEST-BUFFER-MANAGER");
         let device = Device::system_default().unwrap();
         let mut buffer_manager = BufferManager::new(&device).unwrap();
 
@@ -222,6 +223,7 @@ mod tests {
 
     #[test]
     fn test_buffer_overflow() {
+        println!("IN TEST-BUFFER-OVERFLOW");
         let device = Device::system_default().unwrap();
         let mut buffer_manager = BufferManager::new(&device).unwrap();
 
