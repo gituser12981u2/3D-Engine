@@ -156,7 +156,16 @@ pub enum CameraMovement {
 mod tests {
     use crate::renderer::{camera::CameraMovement, Camera};
     use glam::{Mat3, Mat4, Vec3};
+    use objc::rc::autoreleasepool;
     use std::panic;
+
+    fn log_test_start(test_name: &str) {
+        println!("Starting test: {test_name}")
+    }
+
+    fn log_test_end(test_name: &str) {
+        println!("Finished test: {test_name}")
+    }
 
     fn vec3_approx_eq(a: Vec3, b: Vec3, epsilon: f32) -> bool {
         (a.x - b.x).abs() < epsilon && (a.y - b.y).abs() < epsilon && (a.z - b.z).abs() < epsilon
@@ -199,133 +208,149 @@ mod tests {
 
     #[test]
     fn test_view_matrix() {
-        let camera_pos = Vec3::new(0.0, 0.0, 5.0);
-        let camera = Camera::new(camera_pos, 45.0, 1.0, 0.1, 100.0);
-        let view_matrix = camera.get_view_matrix();
-        let epsilon = 1e-6;
+        log_test_start("test_view_matrix");
+        autoreleasepool(|| {
+            let camera_pos = Vec3::new(0.0, 0.0, 5.0);
+            let camera = Camera::new(camera_pos, 45.0, 1.0, 0.1, 100.0);
+            let view_matrix = camera.get_view_matrix();
+            let epsilon = 1e-6;
 
-        // Check orthogonality
-        assert!(
-            mat4_approx_orthogonal(view_matrix, epsilon).is_ok(),
-            "View matrix rotation part is not approximately orthogonal: {}",
-            mat4_approx_orthogonal(view_matrix, epsilon)
-                .err()
-                .unwrap_or_default()
-        );
+            // Check orthogonality
+            assert!(
+                mat4_approx_orthogonal(view_matrix, epsilon).is_ok(),
+                "View matrix rotation part is not approximately orthogonal: {}",
+                mat4_approx_orthogonal(view_matrix, epsilon)
+                    .err()
+                    .unwrap_or_default()
+            );
 
-        // Check that the camera position is correctly transformed
-        let transformed_camera_pos = view_matrix.transform_point3(camera_pos);
-        assert!(
-            vec3_approx_eq(transformed_camera_pos, Vec3::ZERO, epsilon),
-            "Camera position not correctly transformed. Expected: {:?}, Got: {:?}",
-            Vec3::ZERO,
-            transformed_camera_pos
-        );
+            // Check that the camera position is correctly transformed
+            let transformed_camera_pos = view_matrix.transform_point3(camera_pos);
+            assert!(
+                vec3_approx_eq(transformed_camera_pos, Vec3::ZERO, epsilon),
+                "Camera position not correctly transformed. Expected: {:?}, Got: {:?}",
+                Vec3::ZERO,
+                transformed_camera_pos
+            );
 
-        // Check that forward direction is along negative z-axis in view space
-        let world_forward = Vec3::new(0.0, 0.0, -1.0);
-        let view_forward = view_matrix.transform_vector3(world_forward).normalize();
-        assert!(
-            vec3_approx_eq(view_forward, Vec3::NEG_Z, epsilon),
-            "Forward direction not correctly transformed. Expected: {:?}, Got: {:?}",
-            Vec3::NEG_Z,
-            view_forward
-        );
+            // Check that forward direction is along negative z-axis in view space
+            let world_forward = Vec3::new(0.0, 0.0, -1.0);
+            let view_forward = view_matrix.transform_vector3(world_forward).normalize();
+            assert!(
+                vec3_approx_eq(view_forward, Vec3::NEG_Z, epsilon),
+                "Forward direction not correctly transformed. Expected: {:?}, Got: {:?}",
+                Vec3::NEG_Z,
+                view_forward
+            );
 
-        // Test that up direction is along positive y-axis in view space
-        let world_up = Vec3::Y;
-        let view_up = view_matrix.transform_vector3(world_up).normalize();
-        assert!(
-            vec3_approx_eq(view_up, Vec3::Y, epsilon),
-            "Up direction not correctly transformed. Expected: {:?}, Got: {:?}",
-            Vec3::Y,
-            view_up
-        );
+            // Test that up direction is along positive y-axis in view space
+            let world_up = Vec3::Y;
+            let view_up = view_matrix.transform_vector3(world_up).normalize();
+            assert!(
+                vec3_approx_eq(view_up, Vec3::Y, epsilon),
+                "Up direction not correctly transformed. Expected: {:?}, Got: {:?}",
+                Vec3::Y,
+                view_up
+            );
 
-        println!("View Matrix:\n{:?}", view_matrix);
+            println!("View Matrix:\n{:?}", view_matrix);
+        });
+        log_test_end("test_view_matrix");
     }
 
     #[test]
     fn test_projection_matrix() {
-        let fov = 45.0f32;
-        let aspect_ratio = 16.0 / 9.0;
-        let near = 0.1;
-        let far = 100.0;
-        let camera = Camera::new(Vec3::ZERO, fov, aspect_ratio, near, far);
-        let proj_matrix = camera.get_projection_matrix();
-        let epsilon = 1e-6;
+        log_test_start("test_projection_matrix");
+        autoreleasepool(|| {
+            let fov = 45.0f32;
+            let aspect_ratio = 16.0 / 9.0;
+            let near = 0.1;
+            let far = 100.0;
+            let camera = Camera::new(Vec3::ZERO, fov, aspect_ratio, near, far);
+            let proj_matrix = camera.get_projection_matrix();
+            let epsilon = 1e-6;
 
-        // Check that Z-near and Z-far affect the z-axis scaling
-        let z_scale = proj_matrix.z_axis.z;
-        assert!(
-            z_scale < -1.0 && z_scale > -2.0,
-            "Z-scaling is out of expected range"
-        );
+            // Check that Z-near and Z-far affect the z-axis scaling
+            let z_scale = proj_matrix.z_axis.z;
+            assert!(
+                z_scale < -1.0 && z_scale > -2.0,
+                "Z-scaling is out of expected range"
+            );
 
-        // Check that perspective division is set up correctly
-        assert!(
-            f32_approx_eq(proj_matrix.z_axis.w, -1.0, epsilon),
-            "Perspective division factor is incorrect"
-        );
+            // Check that perspective division is set up correctly
+            assert!(
+                f32_approx_eq(proj_matrix.z_axis.w, -1.0, epsilon),
+                "Perspective division factor is incorrect"
+            );
 
-        // Check that FOV affects vertical scaling
-        let expected_y_scale = 1.0 / (0.5 * fov).to_radians().tan();
-        assert!(
-            f32_approx_eq(proj_matrix.y_axis.y, expected_y_scale, epsilon),
-            "Vertical scaling does not match expected FOV"
-        );
+            // Check that FOV affects vertical scaling
+            let expected_y_scale = 1.0 / (0.5 * fov).to_radians().tan();
+            assert!(
+                f32_approx_eq(proj_matrix.y_axis.y, expected_y_scale, epsilon),
+                "Vertical scaling does not match expected FOV"
+            );
 
-        // Check that the matrix is indeed a projection matrix
-        assert!(
-            proj_matrix.w_axis.x == 0.0
-                && proj_matrix.w_axis.y == 0.0
-                && proj_matrix.w_axis.w == 0.0,
-            "Matrix does not have the expected structure of a projection matrix"
-        );
+            // Check that the matrix is indeed a projection matrix
+            assert!(
+                proj_matrix.w_axis.x == 0.0
+                    && proj_matrix.w_axis.y == 0.0
+                    && proj_matrix.w_axis.w == 0.0,
+                "Matrix does not have the expected structure of a projection matrix"
+            );
 
-        println!("Projection Matrix:\n{:?}", proj_matrix);
+            println!("Projection Matrix:\n{:?}", proj_matrix);
+        });
+        log_test_end("test_projection_matrix");
     }
 
     #[test]
     fn test_camera_movement() {
-        let result = panic::catch_unwind(|| {
-            let position = Vec3::ZERO;
-            let fov = 45.0;
-            let aspect_ratio = 1.0;
-            let near = 0.1;
-            let far = 100.0;
-            let movement_speed = 0.5;
-            let mouse_sensitivity = 0.001;
+        log_test_start("test_camera_movement");
+        autoreleasepool(|| {
+            let result = panic::catch_unwind(|| {
+                let position = Vec3::ZERO;
+                let fov = 45.0;
+                let aspect_ratio = 1.0;
+                let near = 0.1;
+                let far = 100.0;
+                let movement_speed = 0.5;
+                let mouse_sensitivity = 0.001;
 
-            let mut camera = Camera::new(position, fov, aspect_ratio, near, far);
-            camera.movement_speed = movement_speed;
-            camera.mouse_sensitivity = mouse_sensitivity;
+                let mut camera = Camera::new(position, fov, aspect_ratio, near, far);
+                camera.movement_speed = movement_speed;
+                camera.mouse_sensitivity = mouse_sensitivity;
 
-            let delta_time = 1.0;
-            camera.process_keyboard(CameraMovement::Forward, delta_time);
+                let delta_time = 1.0;
+                camera.process_keyboard(CameraMovement::Forward, delta_time);
 
-            let expected_movement = movement_speed * delta_time;
-            let expected_position = Vec3::new(0.0, 0.0, -expected_movement);
+                let expected_movement = movement_speed * delta_time;
+                let expected_position = Vec3::new(0.0, 0.0, -expected_movement);
 
-            assert!(
-                vec3_approx_eq(camera.position, expected_position, 1e-6),
-                "Expected position: {:?}, got {:?}",
-                expected_position,
-                camera.position
-            );
+                assert!(
+                    vec3_approx_eq(camera.position, expected_position, 1e-6),
+                    "Expected position: {:?}, got {:?}",
+                    expected_position,
+                    camera.position
+                );
+            });
+
+            if let Err(e) = result {
+                eprintln!("Test panicked: {:?}", e);
+                panic!("test_camera_movement failed");
+            }
         });
-
-        if let Err(e) = result {
-            eprintln!("Test panicked: {:?}", e);
-            panic!("test_camera_movement failed");
-        }
+        log_test_end("test_camera_movement");
     }
 
     #[test]
     fn test_mouse_movement() {
-        let mut camera = Camera::new(Vec3::ZERO, 45.0, 1.0, 0.1, 100.0);
-        camera.process_mouse_movement(10.0, 0.0);
-        let forward = -camera.orientation * Vec3::Z;
-        assert!(forward.x < 0.0); // Camera should have rotated to the left
+        log_test_start("test_mouse_movement");
+        autoreleasepool(|| {
+            let mut camera = Camera::new(Vec3::ZERO, 45.0, 1.0, 0.1, 100.0);
+            camera.process_mouse_movement(10.0, 0.0);
+            let forward = -camera.orientation * Vec3::Z;
+            assert!(forward.x < 0.0); // Camera should have rotated to the left
+        });
+        log_test_end("test_mouse_movement");
     }
 }
