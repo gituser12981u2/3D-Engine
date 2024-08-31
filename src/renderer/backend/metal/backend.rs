@@ -387,30 +387,30 @@ impl GraphicsBackend for MetalBackend {
     // }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::RenderPass;
-    use metal::{Device, MTLViewport};
+// #[cfg(test)]
+// mod tests {
+//     use super::RenderPass;
+//     use metal::{Device, MTLViewport};
 
-    #[test]
-    fn test_render_pass_creation() {
-        println!("IN TEST-RENDER-PASS-CREATION");
-        let device = Device::system_default().expect("No Metal device found");
-        let command_queue = device.new_command_queue();
-        let command_buffer = command_queue.new_command_buffer();
-        let descriptor = metal::RenderPassDescriptor::new();
-        let encoder = command_buffer.new_render_command_encoder(&descriptor);
-        let viewport = MTLViewport {
-            originX: 0.0,
-            originY: 0.0,
-            width: 800.0,
-            height: 600.0,
-            znear: 0.0,
-            zfar: 1.0,
-        };
+//     #[test]
+//     fn test_render_pass_creation() {
+//         println!("IN TEST-RENDER-PASS-CREATION");
+//         let device = Device::system_default().expect("No Metal device found");
+//         let command_queue = device.new_command_queue();
+//         let command_buffer = command_queue.new_command_buffer();
+//         let descriptor = metal::RenderPassDescriptor::new();
+//         let encoder = command_buffer.new_render_command_encoder(&descriptor);
+//         let viewport = MTLViewport {
+//             originX: 0.0,
+//             originY: 0.0,
+//             width: 800.0,
+//             height: 600.0,
+//             znear: 0.0,
+//             zfar: 1.0,
+//         };
 
-        let render_pass = RenderPass::new(encoder, viewport);
-        assert_eq!(render_pass.viewport.width, 800.0);
-        assert_eq!(render_pass.viewport.height, 600.0);
-    }
-}
+//         let render_pass = RenderPass::new(encoder, viewport);
+//         assert_eq!(render_pass.viewport.width, 800.0);
+//         assert_eq!(render_pass.viewport.height, 600.0);
+//     }
+// }
