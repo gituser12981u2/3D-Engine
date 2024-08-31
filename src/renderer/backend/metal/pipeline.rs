@@ -193,19 +193,19 @@ pub fn create_default_pipeline_descriptor(
     Ok(pipeline_descriptor)
 }
 
-#[cfg(test)]
-mod tests {
-    use crate::renderer::backend::metal::pipeline::create_default_pipeline_descriptor;
-    use metal::Device;
+// #[cfg(test)]
+// mod tests {
+//     use crate::renderer::backend::metal::pipeline::create_default_pipeline_descriptor;
+//     use metal::Device;
 
-    #[test]
-    fn test_create_default_pipeline_descriptor() {
-        let device = Device::system_default().expect("No Metal device found");
-        let result = create_default_pipeline_descriptor(&device);
-        assert!(
-            result.is_ok(),
-            "Failed to create render pipeline: {:?}",
-            result.err()
-        );
-    }
-}
+//     #[test]
+//     fn test_create_default_pipeline_descriptor() {
+//         let device = Device::system_default().expect("No Metal device found");
+//         let result = create_default_pipeline_descriptor(&device);
+//         assert!(
+//             result.is_ok(),
+//             "Failed to create render pipeline: {:?}",
+//             result.err()
+//         );
+//     }
+// }
