@@ -1,13 +1,11 @@
 use core::fmt;
+use glam::Mat4;
 use metal::{MTLIndexType, MTLPrimitiveType};
 use raw_window_handle::HandleError;
 use std::num::NonZeroU32;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct BufferId(pub NonZeroU32);
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct RenderPipelineId(pub NonZeroU32);
+// #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+// pub struct RenderPipelineId(pub NonZeroU32);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct TextureId(pub NonZeroU32);
@@ -60,7 +58,7 @@ pub enum BackendDrawCommand {
     },
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PrimitiveType {
     Point,
     Line,
@@ -100,6 +98,13 @@ impl From<Color> for [f32; 4] {
 pub struct Vertex {
     pub position: [f32; 3],
     pub color: [f32; 4],
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct Uniforms {
+    pub view_projection_matrix: Mat4,
+    pub model_matrix: Mat4,
 }
 
 impl Default for Vertex {

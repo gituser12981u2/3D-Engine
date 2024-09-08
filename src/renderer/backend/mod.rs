@@ -2,11 +2,10 @@ pub mod metal;
 pub mod vulkan;
 
 use ::metal::{MTLRegion, RenderPassDescriptorRef, RenderPipelineDescriptor, TextureDescriptor};
-use glam::Mat4;
 use metal::RenderPass;
 
 use super::{
-    common::{BackendDrawCommand, RenderPipelineId, RendererError, TextureId, Vertex},
+    common::{BackendDrawCommand, RendererError, TextureId, Uniforms, Vertex},
     render_queue::InstanceData,
 };
 
@@ -20,7 +19,7 @@ pub trait GraphicsBackend {
 
     fn update_vertex_buffer(&mut self, vertices: &[Vertex]) -> Result<(), RendererError>;
     fn update_index_buffer(&mut self, indices: &[u32]) -> Result<(), RendererError>;
-    fn update_uniform_buffer(&mut self, uniform_data: &Mat4) -> Result<(), RendererError>;
+    fn update_uniform_buffer(&mut self, uniforms: &Uniforms) -> Result<(), RendererError>;
     fn update_instance_buffer(&mut self, instances: &[InstanceData]) -> Result<(), RendererError>;
 
     #[allow(dead_code)]
@@ -43,7 +42,7 @@ pub trait GraphicsBackend {
     fn create_render_pipeline_state(
         &mut self,
         descriptor: &RenderPipelineDescriptor,
-    ) -> Result<RenderPipelineId, RendererError>;
+    ) -> Result<(), RendererError>;
     // fn draw_large_single_vertex(
     //     &mut self,
     //     vertex_count: u32,
