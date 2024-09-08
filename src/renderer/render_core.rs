@@ -64,7 +64,9 @@ impl Renderer {
         })
     }
 
-    pub fn update(&mut self) {
+    pub fn render(&mut self) -> Result<(), RendererError> {
+        // TODO: sort batches in an efficient manner
+        // TODO: Implement Frustum Culling
         let view_projection_matrix =
             self.camera.get_projection_matrix() * self.camera.get_view_matrix();
 

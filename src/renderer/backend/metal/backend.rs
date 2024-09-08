@@ -194,6 +194,18 @@ impl GraphicsBackend for MetalBackend {
         let command_buffer = self.command_queue.new_command_buffer();
         let encoder = command_buffer.new_render_command_encoder(descriptor);
 
+        // TODO: move to render pass
+        unsafe {
+            let raw_encoder = encoder.as_ptr();
+            let () = msg_send![raw_encoder, setTriangleFillMode:
+                if self.wireframe_mode {
+                    metal::MTLTriangleFillMode::Lines
+                } else {
+                    metal::MTLTriangleFillMode::Fill
+                }
+            ];
+        }
+
         let viewport = self.create_viewport(drawable);
         let mut render_pass = RenderPass::new(encoder, viewport);
 
