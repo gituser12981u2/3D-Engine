@@ -1,10 +1,14 @@
 use crate::renderer::{
-    common::{BufferId, Vertex},
+    common::{Uniforms, Vertex},
     render_queue::InstanceData,
     RendererError,
 };
+use core_graphics::display::CGSize;
 use glam::Mat4;
-use metal::{Buffer, Device, MTLResourceOptions};
+use metal::{
+    Buffer, Device, MTLPixelFormat, MTLResourceOptions, MTLStorageMode, MTLTextureUsage, Texture,
+    TextureDescriptor,
+};
 
 // TODO: find a more dynamic way of setting max buffer sizes
 // Constants for maximum buffer size
@@ -17,9 +21,11 @@ pub struct BufferManager {
     pub index_buffer: Buffer,
     pub uniform_buffer: Buffer,
     pub instance_buffer: Buffer,
+    pub depth_texture: Option<Texture>,
     vertex_count: usize,
     index_count: usize,
     instance_count: usize,
+    device: Device,
 }
 
 impl BufferManager {
@@ -49,9 +55,11 @@ impl BufferManager {
             index_buffer,
             uniform_buffer,
             instance_buffer,
+            depth_texture: None,
             vertex_count: 0,
             index_count: 0,
             instance_count: 0,
+            device: device.clone(),
         })
     }
 
@@ -85,14 +93,14 @@ impl BufferManager {
         Ok(())
     }
 
-    pub fn update_uniform_buffer(&mut self, uniform_data: &Mat4) -> Result<(), RendererError> {
+    pub fn update_uniform_buffer(&mut self, uniforms: &Uniforms) -> Result<(), RendererError> {
         unsafe {
-            let dest: *mut Mat4 = self.uniform_buffer.contents() as *mut Mat4;
-            *dest = *uniform_data;
+            let dest: *mut Uniforms = self.uniform_buffer.contents() as *mut Uniforms;
+            *dest = *uniforms;
         }
         self.uniform_buffer.did_modify_range(metal::NSRange {
             location: 0,
-            length: std::mem::size_of::<Mat4>() as u64,
+            length: std::mem::size_of::<Uniforms>() as u64,
         });
 
         Ok(())
@@ -119,14 +127,23 @@ impl BufferManager {
         Ok(())
     }
 
-    #[allow(dead_code)]
-    pub fn get_buffer(&self, id: BufferId) -> Option<&Buffer> {
-        match id.0.get() {
-            1 => Some(&self.vertex_buffer),
-            2 => Some(&self.index_buffer),
-            3 => Some(&self.uniform_buffer),
-            4 => Some(&self.instance_buffer),
-            _ => None,
+    pub fn update_depth_texture(&mut self, size: CGSize) {
+        let descriptor = TextureDescriptor::new();
+        descriptor.set_width(size.width as u64);
+        descriptor.set_height(size.height as u64);
+        descriptor.set_pixel_format(MTLPixelFormat::Depth32Float);
+        descriptor.set_storage_mode(MTLStorageMode::Private);
+        descriptor.set_usage(MTLTextureUsage::RenderTarget);
+
+        self.depth_texture = Some(self.device.new_texture(&descriptor));
+    }
+
+    pub fn ensure_depth_texture(&mut self, size: CGSize) {
+        if self.depth_texture.is_none()
+            || self.depth_texture.as_ref().unwrap().width() != size.width as u64
+            || self.depth_texture.as_ref().unwrap().height() != size.height as u64
+        {
+            self.update_depth_texture(size);
         }
     }
 

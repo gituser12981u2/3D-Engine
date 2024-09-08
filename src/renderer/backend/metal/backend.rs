@@ -2,18 +2,17 @@ use super::buffer_manager::BufferManager;
 use super::pipeline::{create_default_pipeline_descriptor, RenderPipelineCache};
 use super::texture_manager::TextureManager;
 use crate::renderer::backend::GraphicsBackend;
-use crate::renderer::common::{
-    BackendDrawCommand, RenderPipelineId, RendererError, TextureId, Vertex,
-};
+use crate::renderer::common::{BackendDrawCommand, RendererError, TextureId, Vertex};
 use cocoa::base::id as cocoa_id;
 use core_graphics::display::CGSize;
 use metal::{
-    objc::{msg_send, sel, sel_impl},
-    CommandQueue, Device, MetalLayer,
+    foreign_types::ForeignTypeRef, BufferRef, DepthStencilState, MTLRegion, MTLViewport,
+    MetalDrawableRef, RenderCommandEncoderRef, RenderPassDescriptorRef, RenderPipelineDescriptor,
+    TextureDescriptor, TextureRef,
 };
 use metal::{
-    BufferRef, MTLRegion, MTLViewport, MetalDrawableRef, RenderCommandEncoderRef,
-    RenderPassDescriptorRef, RenderPipelineDescriptor, TextureDescriptor,
+    objc::{msg_send, sel, sel_impl},
+    CommandQueue, Device, MetalLayer,
 };
 use raw_window_handle::HasWindowHandle;
 use winit::window::Window;
@@ -25,7 +24,10 @@ pub struct MetalBackend {
     buffer_manager: BufferManager,
     texture_manager: TextureManager,
     layer: MetalLayer,
-    default_pipeline_id: RenderPipelineId,
+    depth_stencil_state: DepthStencilState,
+    wireframe_mode: bool,
+    // pipeline_cache: HashMap<PipelineType, RenderPipelineId>,
+    // current_pipeline_type: PipelineType,
 }
 
 pub struct RenderPass<'a> {
@@ -44,6 +46,10 @@ impl<'a> RenderPass<'a> {
 
     pub fn set_vertex_buffer(&self, index: u64, buffer: Option<&BufferRef>, offset: u64) {
         self.encoder.set_vertex_buffer(index, buffer, offset);
+    }
+
+    pub fn set_depth_stencil_state(&mut self, state: &DepthStencilState) {
+        self.encoder.set_depth_stencil_state(state);
     }
 
     fn draw(&mut self, draw_command: BackendDrawCommand, buffer_manager: &BufferManager) {
@@ -135,9 +141,9 @@ impl MetalBackend {
         let buffer_manager = BufferManager::new(&device)?;
         let texture_manager = TextureManager::new(&device);
 
-        let default_pipeline_descriptor = create_default_pipeline_descriptor(&device)?;
-        let default_pipeline_id =
-            render_pipeline_cache.create_pipeline_state(&default_pipeline_descriptor)?;
+        let (default_pipeline_descriptor, depth_stencil_state) =
+            create_default_pipeline_descriptor(&device)?;
+        render_pipeline_cache.create_pipeline_state(&default_pipeline_descriptor)?;
 
         let layer = match window.window_handle()?.as_raw() {
             raw_window_handle::RawWindowHandle::AppKit(handle) => {
@@ -159,7 +165,8 @@ impl MetalBackend {
             buffer_manager,
             texture_manager,
             layer,
-            default_pipeline_id,
+            depth_stencil_state,
+            wireframe_mode: false,
         })
     }
 
@@ -195,6 +202,10 @@ impl MetalBackend {
     pub fn device(&self) -> &Device {
         &self.device
     }
+
+    pub fn toggle_wireframe_mode(&mut self) {
+        self.wireframe_mode = !self.wireframe_mode;
+    }
 }
 
 impl GraphicsBackend for MetalBackend {
@@ -208,22 +219,52 @@ impl GraphicsBackend for MetalBackend {
 
         let texture = drawable.texture();
 
+        // Update depth texture if needed
+        let texture_size = CGSize::new(texture.width() as f64, texture.height() as f64);
+        self.buffer_manager.ensure_depth_texture(texture_size);
+
         let color_attachment = descriptor.color_attachments().object_at(0).unwrap();
         color_attachment.set_texture(Some(texture));
         color_attachment.set_load_action(metal::MTLLoadAction::Clear);
         color_attachment.set_clear_color(metal::MTLClearColor::new(0.1, 0.1, 0.1, 1.0)); // Dark gray background
         color_attachment.set_store_action(metal::MTLStoreAction::Store);
 
+        // Set up depth attachment
+        let depth_attachment = descriptor.depth_attachment().unwrap();
+        depth_attachment.set_texture(
+            self.buffer_manager
+                .depth_texture
+                .as_ref()
+                .map(|t| t as &TextureRef),
+        );
+        depth_attachment.set_load_action(metal::MTLLoadAction::Clear);
+        depth_attachment.set_clear_depth(1.0);
+        depth_attachment.set_store_action(metal::MTLStoreAction::Store);
+
         let command_buffer = self.command_queue.new_command_buffer();
         let encoder = command_buffer.new_render_command_encoder(descriptor);
+
+        // TODO: move to render pass
+        unsafe {
+            let raw_encoder = encoder.as_ptr();
+            let () = msg_send![raw_encoder, setTriangleFillMode:
+                if self.wireframe_mode {
+                    metal::MTLTriangleFillMode::Lines
+                } else {
+                    metal::MTLTriangleFillMode::Fill
+                }
+            ];
+        }
 
         let viewport = self.create_viewport(drawable);
         let mut render_pass = RenderPass::new(encoder, viewport);
 
+        render_pass.set_depth_stencil_state(&self.depth_stencil_state);
+
         // Set the pipeline state (you'll need to get the appropriate pipeline state based on the draw command)
         let pipeline_state = self
             .render_pipeline_cache
-            .get_pipeline_state(self.default_pipeline_id)
+            .get_pipeline_state()
             .ok_or(RendererError::InvalidPipelineId)?;
         render_pass.set_pipeline(pipeline_state);
 
@@ -258,8 +299,11 @@ impl GraphicsBackend for MetalBackend {
         self.buffer_manager.update_index_buffer(indices)
     }
 
-    fn update_uniform_buffer(&mut self, uniform_data: &glam::Mat4) -> Result<(), RendererError> {
-        self.buffer_manager.update_uniform_buffer(uniform_data)
+    fn update_uniform_buffer(
+        &mut self,
+        uniforms: &crate::renderer::common::Uniforms,
+    ) -> Result<(), RendererError> {
+        self.buffer_manager.update_uniform_buffer(uniforms)
     }
 
     fn update_instance_buffer(
@@ -297,7 +341,7 @@ impl GraphicsBackend for MetalBackend {
     fn create_render_pipeline_state(
         &mut self,
         descriptor: &RenderPipelineDescriptor,
-    ) -> Result<RenderPipelineId, RendererError> {
+    ) -> Result<(), RendererError> {
         self.render_pipeline_cache.create_pipeline_state(descriptor)
     }
 

@@ -8,6 +8,18 @@ use crate::renderer::{
 };
 use glam::Vec3;
 
+/// Allows creation of a simple triangle primitive
+///
+/// # Example
+///
+/// ```
+/// let triangle = renderer.create_triangle(
+///     Vec3::new(0.0, 0.5, 0.0),  // Top vertex
+///     Vec3::new(-0.5, -0.5, 0.0), // Bottom-left vertex
+///     Vec3::new(0.5, -0.5, 0.0),  // Bottom-right vertex
+///     Color::new(1.0, 0.0, 0.0, 1.0) // Red color
+/// );
+/// ```
 pub struct TriangleBuilder {
     vertices: [Vertex; 3],
 }

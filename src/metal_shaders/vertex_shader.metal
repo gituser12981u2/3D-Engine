@@ -8,6 +8,7 @@ constant bool use_vertex_color [[function_constant(1)]];
 
 struct Uniforms {
     float4x4 viewProjectionMatrix;
+    float4x4 modelMatrix;
 };
 
 struct InstanceData {
@@ -28,13 +29,7 @@ vertex VertexOut vertex_main(
     if (is_instanced) {
         modelMatrix = instanceData[instanceID].modelMatrix;
     } else {
-        // Create an identity matrix when not instanced
-        modelMatrix = float4x4(
-            float4(1.0, 0.0, 0.0, 0.0),
-            float4(0.0, 1.0, 0.0, 0.0),
-            float4(0.0, 0.0, 1.0, 0.0),
-            float4(0.0, 0.0, 0.0, 1.0)
-        );
+        modelMatrix = uniforms.modelMatrix;
     }
 
     float4 worldPosition = modelMatrix * float4(vertexIn.position, 1.0);
@@ -43,5 +38,3 @@ vertex VertexOut vertex_main(
 
     return out;
 }
-
-

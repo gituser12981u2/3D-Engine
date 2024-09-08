@@ -40,7 +40,7 @@ impl GraphicsBackend for VulkanBackend {
     #[allow(unused_variables)]
     fn update_uniform_buffer(
         &mut self,
-        uniform_data: &glam::Mat4,
+        uniforms: &crate::renderer::common::Uniforms,
     ) -> Result<(), crate::renderer::RendererError> {
         unimplemented!()
     }
@@ -79,7 +79,7 @@ impl GraphicsBackend for VulkanBackend {
     fn create_render_pipeline_state(
         &mut self,
         descriptor: &metal::RenderPipelineDescriptor,
-    ) -> Result<crate::renderer::common::RenderPipelineId, crate::renderer::RendererError> {
+    ) -> Result<(), crate::renderer::RendererError> {
         unimplemented!()
     }
 

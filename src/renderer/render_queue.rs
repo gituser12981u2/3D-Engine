@@ -4,15 +4,14 @@ use super::{
 };
 use glam::Mat4;
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct InstanceData {
-    #[allow(dead_code)]
     pub model_matrix: Mat4,
-    #[allow(dead_code)]
     pub color: Color,
 }
 
 impl InstanceData {
+    #[allow(dead_code)]
     pub fn new(model_matrix: Mat4, color: Color) -> Self {
         InstanceData {
             model_matrix,
@@ -181,4 +180,104 @@ impl RenderQueue {
     // pub fn get_instances(&self) -> &[InstanceData] {
     //     &self.instances
     // }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{DrawCommand, DrawCommandBuilder, InstanceData, RenderQueue};
+    use crate::renderer::{
+        common::{PrimitiveType, Vertex},
+        Color,
+    };
+    use glam::{Mat4, Vec3};
+
+    #[test]
+    fn test_render_queue_new() {
+        let queue = RenderQueue::new();
+        assert!(queue.draw_commands.is_empty());
+    }
+
+    #[test]
+    fn test_render_queue_add_draw_command() {
+        let mut queue = RenderQueue::new();
+        let command = DrawCommand::Mesh {
+            mesh_id: 1,
+            instance_data: None,
+            transform: Mat4::IDENTITY,
+        };
+        queue.add_draw_command(command.clone());
+        assert_eq!(queue.draw_commands.len(), 1);
+        assert!(matches!(
+            queue.draw_commands[0],
+            DrawCommand::Mesh { mesh_id: 1, .. }
+        ))
+    }
+
+    #[test]
+    fn test_render_queue_clear() {
+        let mut queue = RenderQueue::new();
+        queue.add_draw_command(DrawCommand::Mesh {
+            mesh_id: 1,
+            instance_data: None,
+            transform: Mat4::IDENTITY,
+        });
+        queue.clear();
+        assert!(queue.draw_commands.is_empty());
+    }
+
+    #[test]
+    fn test_render_queue_get_draw_commands() {
+        let mut queue = RenderQueue::new();
+        queue.add_draw_command(DrawCommand::Mesh {
+            mesh_id: 1,
+            instance_data: None,
+            transform: Mat4::IDENTITY,
+        });
+        let commands = queue.get_draw_commands();
+        assert_eq!(commands.len(), 1);
+        assert!(matches!(commands[0], DrawCommand::Mesh { mesh_id: 1, .. }))
+    }
+
+    #[test]
+    fn test_draw_command_builder_new_mesh() {
+        let builder = DrawCommandBuilder::new_mesh(1);
+        let command = builder.build();
+        assert!(matches!(command, DrawCommand::Mesh { mesh_id: 1, .. }));
+    }
+
+    #[test]
+    fn test_draw_command_builder_new_primitive() {
+        let vertices = vec![Vertex::default()];
+        let builder =
+            DrawCommandBuilder::new_primitive(vertices.clone(), None, PrimitiveType::Triangle);
+        let command = builder.build();
+        assert!(matches!(
+            command,
+            DrawCommand::Primitive {
+                primitive_type: PrimitiveType::Triangle,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn test_draw_command_builder_with_instances() {
+        let instances = vec![InstanceData::new(
+            Mat4::IDENTITY,
+            Color::new(1.0, 0.0, 0.0, 1.0),
+        )];
+        let builder = DrawCommandBuilder::new_mesh(1).with_instances(instances.clone());
+        let command = builder.build();
+        assert!(
+            matches!(command, DrawCommand::Mesh { instance_data: Some(data), .. } if data == instances),
+        );
+    }
+
+    #[test]
+    fn test_draw_command_builder_with_transform() {
+        let transform = Mat4::from_scale(Vec3::new(2.0, 2.0, 2.0));
+        let builder = DrawCommandBuilder::new_mesh(1).with_transform(transform);
+        let command = builder.build();
+        assert!(matches!(command, DrawCommand::Mesh { transform: t, .. } if t == transform));
+    }
 }

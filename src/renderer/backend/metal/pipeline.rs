@@ -1,54 +1,50 @@
-use crate::renderer::{common::RenderPipelineId, RendererError};
-use metal::{Device, MTLDataType, MTLPixelFormat, RenderPipelineDescriptor, RenderPipelineState};
-use std::{ffi::c_void, num::NonZeroU32};
+use crate::renderer::RendererError;
+use metal::{
+    DepthStencilDescriptor, DepthStencilState, Device, MTLDataType, MTLPixelFormat,
+    RenderPipelineDescriptor, RenderPipelineState,
+};
+use std::ffi::c_void;
 
 pub struct RenderPipelineCache {
     device: Device,
-    pipelines: Vec<Option<RenderPipelineState>>,
-    free_ids: Vec<RenderPipelineId>,
+    pipeline_state: Option<RenderPipelineState>,
+    // pipelines: Vec<Option<RenderPipelineState>>, // ID pipelines
 }
 
 impl RenderPipelineCache {
     pub fn new(device: &Device) -> Result<Self, RendererError> {
         Ok(RenderPipelineCache {
             device: device.clone(),
-            pipelines: Vec::new(),
-            free_ids: Vec::new(),
+            pipeline_state: None,
+            // pipelines: Vec::new(),
         })
     }
 
     pub fn create_pipeline_state(
         &mut self,
         descriptor: &RenderPipelineDescriptor,
-    ) -> Result<RenderPipelineId, RendererError> {
+    ) -> Result<(), RendererError> {
         let pipeline_state = self
             .device
             .new_render_pipeline_state(descriptor)
-            .map_err(|e| RendererError::PipelineCreationFailed(e.to_string()))?;
+            .map_err(|e| {
+                eprintln!("Failed to create pipeline state: {e}");
+                RendererError::PipelineCreationFailed(e.to_string())
+            })?;
 
-        let id = if let Some(id) = self.free_ids.pop() {
-            self.pipelines[id.0.get() as usize - 1] = Some(pipeline_state);
-            id
-        } else {
-            let id = RenderPipelineId(
-                NonZeroU32::new((self.pipelines.len() + 1) as u32)
-                    .expect("Pipeline count overflow"),
-            );
-            self.pipelines.push(Some(pipeline_state));
-            id
-        };
-
-        Ok(id)
+        self.pipeline_state = Some(pipeline_state);
+        println!("New pipeline state created and cached");
+        Ok(())
     }
 
-    pub fn get_pipeline_state(&self, id: RenderPipelineId) -> Option<&RenderPipelineState> {
-        self.pipelines.get(id.0.get() as usize - 1)?.as_ref()
+    pub fn get_pipeline_state(&self) -> Option<&RenderPipelineState> {
+        self.pipeline_state.as_ref()
     }
 }
 
 pub fn create_default_pipeline_descriptor(
     device: &Device,
-) -> Result<RenderPipelineDescriptor, RendererError> {
+) -> Result<(RenderPipelineDescriptor, DepthStencilState), RendererError> {
     println!("Loading pre-compiled shaders...");
 
     // Create compilation options
@@ -99,6 +95,16 @@ pub fn create_default_pipeline_descriptor(
         .object_at(0)
         .unwrap();
     attachment.set_pixel_format(MTLPixelFormat::BGRA8Unorm);
+
+    // Add depth attachment
+    pipeline_descriptor.set_depth_attachment_pixel_format(MTLPixelFormat::Depth32Float);
+
+    // Enable depth testing
+    let depth_stencil_descriptor = DepthStencilDescriptor::new();
+    depth_stencil_descriptor.set_depth_compare_function(metal::MTLCompareFunction::Less);
+    depth_stencil_descriptor.set_depth_write_enabled(true);
+
+    let depth_stencil_state = device.new_depth_stencil_state(&depth_stencil_descriptor);
 
     // Setup vertex descriptor
     let vertex_descriptor = metal::VertexDescriptor::new();
@@ -190,7 +196,7 @@ pub fn create_default_pipeline_descriptor(
 
     // Create the render pipeline state
     println!("Render pipeline state created");
-    Ok(pipeline_descriptor)
+    Ok((pipeline_descriptor, depth_stencil_state))
 }
 
 #[cfg(test)]
