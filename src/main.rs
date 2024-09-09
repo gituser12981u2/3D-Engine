@@ -1,11 +1,35 @@
+use env_logger::Builder;
 use glam::{Mat4, Quat, Vec3};
+use log::LevelFilter;
 use renderer::{Color, RendererSystem};
 use std::time::Instant;
 
 mod physics;
 mod renderer;
 
+#[cfg(debug_assertions)]
+#[macro_export]
+macro_rules! debug_trace {
+    ($($arg:tt)*) => ( log::trace!($($arg)*) );
+}
+
+#[cfg(not(debug_assertions))]
+#[macro_export]
+macro_rules! debug_trace {
+    ($($arg:tt)*) => {};
+}
+
+// Usage in your code
+// use crate::debug_trace;
+
+// fn some_function() {
+//     debug_trace!("This will only appear in debug builds");
+// }
+// TODO: Make sure production code is not built with trace logging
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    Builder::new().filter_level(LevelFilter::Debug).init();
+
     let mut renderer_system = RendererSystem::new(800, 600, "Metal Renderer")?;
     let start_time = Instant::now();
 

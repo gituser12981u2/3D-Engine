@@ -1,4 +1,5 @@
 use glam::{Mat4, Quat, Vec3};
+use log::trace;
 
 pub struct Camera {
     position: Vec3,
@@ -66,7 +67,7 @@ impl Camera {
         self.orientation = yaw_rotation * self.orientation * pitch_rotation;
         self.orientation = self.orientation.normalize();
 
-        println!(
+        trace!(
             "Camera orientation after mouse movement: {:?}",
             self.orientation
         );

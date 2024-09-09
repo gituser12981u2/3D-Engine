@@ -5,22 +5,24 @@ use crate::renderer::{
 };
 use core_graphics::display::CGSize;
 use glam::Mat4;
+use log::{debug, warn};
 use metal::{
     Buffer, Device, MTLPixelFormat, MTLResourceOptions, MTLStorageMode, MTLTextureUsage, Texture,
     TextureDescriptor,
 };
 
-// TODO: find a more dynamic way of setting max buffer sizes
 // Constants for maximum buffer size
-const MAX_VERTICES: usize = 65536; // 2^16
-const MAX_INDICES: usize = 196608; // 65536 * 3
-const MAX_INSTANCES: usize = 4096;
+// TODO: Implement a more dynamic way of setting max buffer sizes
+const MAX_VERTICES: usize = 65_536; // 2^16
+const MAX_INDICES: usize = 196_608; // 65536 * 3
+const MAX_INSTANCES: usize = 4_096;
 
+/// Manages Metal buffers for vertex, index, uniform, and instance data.
 pub struct BufferManager {
     pub vertex_buffer: Buffer,
     pub index_buffer: Buffer,
-    pub uniform_buffer: Buffer,
     pub instance_buffer: Buffer,
+    pub uniform_buffer: Buffer,
     pub depth_texture: Option<Texture>,
     vertex_count: usize,
     index_count: usize,
@@ -29,26 +31,24 @@ pub struct BufferManager {
 }
 
 impl BufferManager {
+    /// Creates a new BufferManager with pre-allocated buffers.
     pub fn new(device: &Device) -> Result<Self, RendererError> {
-        let vertex_buffer = device.new_buffer(
-            (std::mem::size_of::<Vertex>() * MAX_VERTICES) as u64,
-            MTLResourceOptions::CPUCacheModeDefaultCache | MTLResourceOptions::StorageModeShared,
+        debug!("Creating new BufferManager");
+        let vertex_buffer = Self::create_buffer(
+            device,
+            MAX_VERTICES,
+            std::mem::size_of::<Vertex>(),
+            "Vertex",
         );
-
-        let index_buffer = device.new_buffer(
-            (std::mem::size_of::<u32>() * MAX_INDICES) as u64,
-            MTLResourceOptions::CPUCacheModeDefaultCache | MTLResourceOptions::StorageModeShared,
+        let index_buffer =
+            Self::create_buffer(device, MAX_INDICES, std::mem::size_of::<u32>(), "Index");
+        let instance_buffer = Self::create_buffer(
+            device,
+            MAX_INSTANCES,
+            std::mem::size_of::<InstanceData>(),
+            "Instance",
         );
-
-        let uniform_buffer = device.new_buffer(
-            std::mem::size_of::<Mat4>() as u64,
-            MTLResourceOptions::CPUCacheModeDefaultCache | MTLResourceOptions::StorageModeManaged,
-        );
-
-        let instance_buffer = device.new_buffer(
-            (std::mem::size_of::<InstanceData>() * MAX_INSTANCES) as u64,
-            MTLResourceOptions::CPUCacheModeDefaultCache | MTLResourceOptions::StorageModeShared,
-        );
+        let uniform_buffer = Self::create_buffer(device, 1, std::mem::size_of::<Mat4>(), "Uniform");
 
         Ok(BufferManager {
             vertex_buffer,
@@ -63,37 +63,66 @@ impl BufferManager {
         })
     }
 
-    pub fn update_vertex_buffer(&mut self, vertices: &[Vertex]) -> Result<(), RendererError> {
-        if vertices.len() > MAX_VERTICES {
+    /// Creates a Metal buffer with the specified size and options.
+    fn create_buffer(device: &Device, count: usize, stride: usize, name: &str) -> Buffer {
+        let buffer = device.new_buffer(
+            (count * stride) as u64,
+            MTLResourceOptions::CPUCacheModeDefaultCache | MTLResourceOptions::StorageModeShared,
+        );
+        buffer.set_label(name);
+        debug!("Created {name} buffer: size = {} bytes", count * stride);
+        buffer
+    }
+
+    /// Generic method to update a buffer with new data.
+    fn update_buffer<T: Copy>(
+        &self,
+        buffer: &Buffer,
+        data: &[T],
+        max_count: usize,
+        buffer_type: &str,
+    ) -> Result<usize, RendererError> {
+        if data.len() > max_count {
+            warn!(
+                "{} buffer overflow: {} items exceed maximum of {}",
+                buffer_type,
+                data.len(),
+                max_count
+            );
             return Err(RendererError::BufferOverflow);
         }
 
         unsafe {
-            let dest: *mut Vertex = self.vertex_buffer.contents() as *mut Vertex;
-            std::ptr::copy_nonoverlapping(vertices.as_ptr(), dest, vertices.len());
+            let dest: *mut T = buffer.contents() as *mut T;
+            std::ptr::copy_nonoverlapping(data.as_ptr(), dest, data.len());
         }
 
-        self.vertex_count = vertices.len();
-        println!("Vertex buffer updated with {} vertices", self.vertex_count);
+        debug!("Updated {} buffer with {} items", buffer_type, data.len());
+        Ok(data.len())
+    }
+
+    pub fn update_vertex_buffer(&mut self, vertices: &[Vertex]) -> Result<(), RendererError> {
+        self.vertex_count =
+            self.update_buffer(&self.vertex_buffer, vertices, MAX_VERTICES, "vertex")?;
         Ok(())
     }
 
     pub fn update_index_buffer(&mut self, indices: &[u32]) -> Result<(), RendererError> {
-        if indices.len() > MAX_INDICES {
-            return Err(RendererError::BufferOverflow);
-        }
+        self.index_count = self.update_buffer(&self.index_buffer, indices, MAX_INDICES, "index")?;
+        Ok(())
+    }
 
-        unsafe {
-            let dest: *mut u32 = self.index_buffer.contents() as *mut u32;
-            std::ptr::copy_nonoverlapping(indices.as_ptr(), dest, indices.len());
-        }
-
-        self.index_count = indices.len();
-        println!("Index buffer updated with {} indices", self.index_count);
+    pub fn update_instance_buffer(
+        &mut self,
+        instances: &[InstanceData],
+    ) -> Result<(), RendererError> {
+        self.instance_count =
+            self.update_buffer(&self.instance_buffer, instances, MAX_INSTANCES, "instance")?;
         Ok(())
     }
 
     pub fn update_uniform_buffer(&mut self, uniforms: &Uniforms) -> Result<(), RendererError> {
+        debug!("Updating uniform buffer");
         unsafe {
             let dest: *mut Uniforms = self.uniform_buffer.contents() as *mut Uniforms;
             *dest = *uniforms;
@@ -106,27 +135,6 @@ impl BufferManager {
         Ok(())
     }
 
-    pub fn update_instance_buffer(
-        &mut self,
-        instances: &[InstanceData],
-    ) -> Result<(), RendererError> {
-        if instances.len() > MAX_INSTANCES {
-            return Err(RendererError::BufferOverflow);
-        }
-
-        unsafe {
-            let dest: *mut InstanceData = self.index_buffer.contents() as *mut InstanceData;
-            std::ptr::copy_nonoverlapping(instances.as_ptr(), dest, instances.len());
-        }
-
-        self.instance_count = instances.len();
-        println!(
-            "Instance buffer updated with {} indices",
-            self.instance_count
-        );
-        Ok(())
-    }
-
     pub fn update_depth_texture(&mut self, size: CGSize) {
         let descriptor = TextureDescriptor::new();
         descriptor.set_width(size.width as u64);
@@ -136,13 +144,16 @@ impl BufferManager {
         descriptor.set_usage(MTLTextureUsage::RenderTarget);
 
         self.depth_texture = Some(self.device.new_texture(&descriptor));
+        debug!("Created depth texture: {}x{}", size.width, size.height);
     }
 
+    /// Ensures that depth texture exists and has the correct size.
     pub fn ensure_depth_texture(&mut self, size: CGSize) {
-        if self.depth_texture.is_none()
-            || self.depth_texture.as_ref().unwrap().width() != size.width as u64
-            || self.depth_texture.as_ref().unwrap().height() != size.height as u64
-        {
+        let update_needed = self.depth_texture.as_ref().map_or(true, |texture| {
+            texture.width() != size.width as u64 || texture.height() != size.height as u64
+        });
+
+        if update_needed {
             self.update_depth_texture(size);
         }
     }
@@ -155,6 +166,11 @@ impl BufferManager {
     #[allow(dead_code)]
     pub fn get_index_count(&self) -> usize {
         self.index_count
+    }
+
+    #[allow(dead_code)]
+    pub fn get_instance_count(&self) -> usize {
+        self.instance_count
     }
 }
 

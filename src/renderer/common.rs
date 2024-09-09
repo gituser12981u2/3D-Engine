@@ -94,7 +94,7 @@ impl From<Color> for [f32; 4] {
 }
 
 #[repr(C)]
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Vertex {
     pub position: [f32; 3],
     pub color: [f32; 4],

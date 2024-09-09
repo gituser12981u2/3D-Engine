@@ -101,6 +101,7 @@ pub fn create_default_pipeline_descriptor(
 
     // Enable depth testing
     let depth_stencil_descriptor = DepthStencilDescriptor::new();
+    // TODO explore other depth compare function options
     depth_stencil_descriptor.set_depth_compare_function(metal::MTLCompareFunction::Less);
     depth_stencil_descriptor.set_depth_write_enabled(true);
 

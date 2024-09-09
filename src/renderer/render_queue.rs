@@ -4,7 +4,7 @@ use super::{
 };
 use glam::Mat4;
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub struct InstanceData {
     pub model_matrix: Mat4,
     pub color: Color,

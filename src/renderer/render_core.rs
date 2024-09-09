@@ -45,8 +45,8 @@ impl Renderer {
 
         // Debug information
         let size = window.inner_size();
-        let scale_factor = window.scale_factor();
-        println!("Window size: {:?}, Scale factor: {scale_factor}", size);
+        // let scale_factor = window.scale_factor();
+        // println!("Window size: {:?}, Scale factor: {scale_factor}", size);
 
         let camera = Camera::new(
             Vec3::new(0.0, 0.0, 3.0),
@@ -89,7 +89,7 @@ impl Renderer {
                             view_projection_matrix,
                             model_matrix: *transform,
                         };
-                        self.backend.update_uniform_buffer(&uniforms)?;
+                        self.backend.update_uniform_buffer(&uniforms).unwrap();
                     } else {
                         return Err(RendererError::InvalidMeshId);
                     }
