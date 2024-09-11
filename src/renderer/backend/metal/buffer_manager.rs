@@ -1,3 +1,8 @@
+//! Metal buffer management module.
+//!
+//! This module provides functionality to create and manage Metal buffers for vertex,
+//! index, uniform, and instance data, as well as depth textures.
+
 use crate::renderer::{
     common::{Uniforms, Vertex},
     render_queue::InstanceData,
@@ -5,14 +10,13 @@ use crate::renderer::{
 };
 use core_graphics::display::CGSize;
 use glam::Mat4;
-use log::{debug, warn};
+use log::{debug, trace, warn};
 use metal::{
     Buffer, Device, MTLPixelFormat, MTLResourceOptions, MTLStorageMode, MTLTextureUsage, Texture,
     TextureDescriptor,
 };
 
 // Constants for maximum buffer size
-// TODO: Implement a more dynamic way of setting max buffer sizes
 const MAX_VERTICES: usize = 65_536; // 2^16
 const MAX_INDICES: usize = 196_608; // 65536 * 3
 const MAX_INSTANCES: usize = 4_096;
@@ -32,6 +36,14 @@ pub struct BufferManager {
 
 impl BufferManager {
     /// Creates a new BufferManager with pre-allocated buffers.
+    ///
+    /// # Arguments
+    ///
+    /// * `device` - The Metal device used to create buffers.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing the new `BufferManager` or a `RendererError`.
     pub fn new(device: &Device) -> Result<Self, RendererError> {
         debug!("Creating new BufferManager");
         let vertex_buffer = Self::create_buffer(
@@ -97,21 +109,48 @@ impl BufferManager {
             std::ptr::copy_nonoverlapping(data.as_ptr(), dest, data.len());
         }
 
-        debug!("Updated {} buffer with {} items", buffer_type, data.len());
+        trace!("Updated {} buffer with {} items", buffer_type, data.len());
         Ok(data.len())
     }
 
+    /// Updates the vertex buffer with new vertex data.
+    ///
+    /// # Arguments
+    ///
+    /// * `vertices` - A slice of vertices to update the buffer with.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` indicating success or a `RendererError`.
     pub fn update_vertex_buffer(&mut self, vertices: &[Vertex]) -> Result<(), RendererError> {
         self.vertex_count =
             self.update_buffer(&self.vertex_buffer, vertices, MAX_VERTICES, "vertex")?;
         Ok(())
     }
 
+    /// Updates the index buffer with new index data.
+    ///
+    /// # Arguments
+    ///
+    /// * `indices` - A slice of indices to update the buffer with.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` indicating success or a `RendererError`.
     pub fn update_index_buffer(&mut self, indices: &[u32]) -> Result<(), RendererError> {
         self.index_count = self.update_buffer(&self.index_buffer, indices, MAX_INDICES, "index")?;
         Ok(())
     }
 
+    /// Updates the instance buffer with new instance data.
+    ///
+    /// # Arguments
+    ///
+    /// * `instances` - A slice of instance data to update the buffer with.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` indicating success of a `RendererError`.
     pub fn update_instance_buffer(
         &mut self,
         instances: &[InstanceData],
@@ -121,8 +160,17 @@ impl BufferManager {
         Ok(())
     }
 
+    /// Updates the uniform buffer with new uniform data.
+    ///
+    /// # Arguments
+    ///
+    /// * `uniforms` - A reference to the uniform data to update the buffer with.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` indicating success or a `RendererError`.
     pub fn update_uniform_buffer(&mut self, uniforms: &Uniforms) -> Result<(), RendererError> {
-        debug!("Updating uniform buffer");
+        trace!("Updating uniform buffer");
         unsafe {
             let dest: *mut Uniforms = self.uniform_buffer.contents() as *mut Uniforms;
             *dest = *uniforms;
@@ -135,6 +183,11 @@ impl BufferManager {
         Ok(())
     }
 
+    /// Updates the depth texture with a new size.
+    ///
+    /// # Arguments
+    ///
+    /// * `size` - The new size for the depth texture.
     pub fn update_depth_texture(&mut self, size: CGSize) {
         let descriptor = TextureDescriptor::new();
         descriptor.set_width(size.width as u64);
@@ -144,10 +197,14 @@ impl BufferManager {
         descriptor.set_usage(MTLTextureUsage::RenderTarget);
 
         self.depth_texture = Some(self.device.new_texture(&descriptor));
-        debug!("Created depth texture: {}x{}", size.width, size.height);
+        trace!("Created depth texture: {}x{}", size.width, size.height);
     }
 
     /// Ensures that depth texture exists and has the correct size.
+    ///
+    /// # Arguments
+    ///
+    /// * `size` -  The required size for the depth texture.
     pub fn ensure_depth_texture(&mut self, size: CGSize) {
         let update_needed = self.depth_texture.as_ref().map_or(true, |texture| {
             texture.width() != size.width as u64 || texture.height() != size.height as u64

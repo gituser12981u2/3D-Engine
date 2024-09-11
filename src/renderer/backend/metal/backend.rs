@@ -1,3 +1,11 @@
+//! Metal backend for the renderer.
+//!
+//! This module provides the implementation of the Metal graphics backend,
+//! which is responsible for rendering using the Metal API on macOS platforms.
+//!
+//! It includes the main `MetalBackend` struct and associated implementations
+//! for handling rendering operations, buffer management, and pipeline state creation.
+
 use super::buffer_manager::BufferManager;
 use super::pipeline::{create_default_pipeline_descriptor, RenderPipelineCache};
 use super::texture_manager::TextureManager;
@@ -138,6 +146,8 @@ impl MetalBackend {
     }
 
     /// Toggles the wireframe mode.
+    ///
+    /// This method switches between filled and wireframe rendering modes
     pub fn toggle_wireframe_mode(&mut self) {
         self.wireframe_mode = !self.wireframe_mode;
         info!("Wireframe mode toggled: {}", self.wireframe_mode);
@@ -145,6 +155,15 @@ impl MetalBackend {
 }
 
 impl GraphicsBackend for MetalBackend {
+    /// Executes a draw command.
+    ///
+    /// # Arguments
+    ///
+    /// * `draw_command` - The draw command to execute.
+    ///
+    /// # Returns
+    ///
+    /// Returns a Result indicating success or a RendererError.
     fn draw(&mut self, draw_command: BackendDrawCommand) -> Result<(), RendererError> {
         let descriptor = metal::RenderPassDescriptor::new();
 
@@ -207,21 +226,43 @@ impl GraphicsBackend for MetalBackend {
         Ok(())
     }
 
+    /// Updates the vertex buffer with new vertex data.
+    ///
+    /// # Arguments
+    ///
+    /// * `vertices` - The new vertex data to upload.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` indicating success or a `RendererError`.
     fn update_vertex_buffer(&mut self, vertices: &[Vertex]) -> Result<(), RendererError> {
         trace!("Updating vertex buffer with {} vertices", vertices.len());
         self.buffer_manager.update_vertex_buffer(vertices)
     }
 
+    /// Updates the index buffer with new index data.
+    ///
+    /// # Arguments
+    ///
+    /// * `indices` - The new index data to upload.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` indicating success or a `RendererError`.
     fn update_index_buffer(&mut self, indices: &[u32]) -> Result<(), RendererError> {
         trace!("Updating index buffer with {} indices", indices.len());
         self.buffer_manager.update_index_buffer(indices)
     }
 
-    fn update_uniform_buffer(&mut self, uniforms: &Uniforms) -> Result<(), RendererError> {
-        trace!("Updating uniform buffer");
-        self.buffer_manager.update_uniform_buffer(uniforms)
-    }
-
+    /// Updates the instance buffer with new instance data.
+    ///
+    /// # Arguments
+    ///
+    /// * `instances` - A new instance data to upload.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` indicating success of a `RendererError`.
     fn update_instance_buffer(&mut self, instances: &[InstanceData]) -> Result<(), RendererError> {
         trace!(
             "Updating instance buffer with {} instances",
@@ -230,11 +271,49 @@ impl GraphicsBackend for MetalBackend {
         self.buffer_manager.update_instance_buffer(instances)
     }
 
+    /// Updates the uniform buffer with new uniform data.
+    ///
+    /// # Arguments
+    ///
+    /// * `uniforms` - The new instance data to upload.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` indicating success or a `RendererError`.
+    fn update_uniform_buffer(&mut self, uniforms: &Uniforms) -> Result<(), RendererError> {
+        trace!("Updating uniform buffer");
+        self.buffer_manager.update_uniform_buffer(uniforms)
+    }
+
+    /// Creates a new texture.
+    ///
+    /// # Arguments
+    ///
+    /// * `descriptor` - The descriptor for the new texture to create.
+    ///
+    /// # Returns
+    ///
+    /// Returns a TextureId for the newly created texture.
     fn create_texture(&mut self, descriptor: &TextureDescriptor) -> TextureId {
         debug!("Creating new texture");
         self.texture_manager.create_texture(descriptor)
     }
 
+    /// Updates the existing texture with new data.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The ID of the texture to update.
+    /// * `region` - The region of the texture to update.
+    /// * `mipmap_level` - The mipmap level to update.
+    /// * `slice` - The slice of the texture to update.
+    /// * `data` - The new texture data.
+    /// * `bytes_per_row` - The number of bytes per row in the texture data.
+    /// * `bytes_per_image` - The number of bytes per image in the texture data.
+    ///
+    /// # Returns
+    ///
+    /// Returns a Result indicating success or a RendererError.
     fn update_texture(
         &mut self,
         id: TextureId,
