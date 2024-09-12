@@ -26,9 +26,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let start_time = Instant::now();
 
     // Create the infinite ground
-    let ground_size = 1000.0;
-    let ground_divisions = 100;
-    let ground_vertices = create_infinite_ground(ground_size, ground_divisions);
+    // let ground_size = 1000.0;
+    // let ground_divisions = 100;
+    // let ground_vertices = create_infinite_ground(ground_size, ground_divisions);
 
     renderer_system.set_render_callback(move |r| {
         let elapsed = start_time.elapsed().as_secs_f32();

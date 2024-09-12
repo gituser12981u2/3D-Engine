@@ -111,13 +111,6 @@ pub struct Vertex {
     pub color: [f32; 4],
 }
 
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub struct Uniforms {
-    pub view_projection_matrix: Mat4,
-    pub model_matrix: Mat4,
-}
-
 impl Default for Vertex {
     fn default() -> Self {
         Vertex {

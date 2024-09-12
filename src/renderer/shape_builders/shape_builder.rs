@@ -14,7 +14,6 @@ use glam::{Mat4, Vec3};
 
 /// Trait for converting shapes into primitive or mesh builders.
 #[allow(clippy::wrong_self_convention)]
-#[allow(dead_code)]
 // as_* is a better naming scheme for API
 #[allow(dead_code)]
 pub trait ShapeBuilder {

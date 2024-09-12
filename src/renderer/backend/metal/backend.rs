@@ -29,7 +29,6 @@ use winit::window::Window;
 
 /// Represents the Metal backend for rendering.
 pub struct MetalBackend {
-    device: Device,
     command_queue: CommandQueue,
     render_pipeline_cache: RenderPipelineCache,
     buffer_manager: BufferManager,
@@ -66,7 +65,6 @@ impl MetalBackend {
 
         info!("MetalBackend initialized successfully");
         Ok(MetalBackend {
-            device,
             command_queue,
             render_pipeline_cache,
             buffer_manager,
