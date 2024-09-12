@@ -1,3 +1,18 @@
+//! Graphics backend module for the renderer.
+//!
+//! This module defines the `GraphicsBackend` trait, which provides an interface
+//! for different graphics APIs (such as Metal and Vulkan) to implement. It also
+//! re-exports the specific backend implementations.
+//!
+//! The `GraphicsBackend` trait defines methods for:
+//! - Rendering operations
+//! - Buffer management (vertex, index, uniform, and instance buffers)
+//! - Texture creation and updates
+//! - Render pipeline state creation
+//!
+//! Implementations of this trait allow the renderer to work with different
+//! graphics APIs in a unified manner.
+
 pub mod metal;
 pub mod vulkan;
 
@@ -7,6 +22,11 @@ use super::{
 };
 use ::metal::{MTLRegion, RenderPassDescriptorRef, RenderPipelineDescriptor, TextureDescriptor};
 
+/// Trait defining the interface for graphics backends.
+///
+/// Implementations of this trait provide the necessary methods for rendering,
+/// buffer management, and pipeline state creation for specific graphics APIs
+/// and allows for proper abstraction of the backend and renderer.
 pub trait GraphicsBackend {
     #[allow(dead_code)]
     fn render_pass(&mut self, descriptor: &RenderPassDescriptorRef) -> Result<(), RendererError>;

@@ -4,7 +4,7 @@ use super::{
     mesh::{Mesh, MeshStorage},
     render_queue::DrawCommand,
     shape_builders::{
-        shape_builder::{vec3_color_to_vertex, PrimitiveBuilder},
+        shape_builder::{vec3_color_to_vertex, ShapeData},
         MeshBuilder, TriangleBuilder,
     },
     Camera, Color, RendererError,
@@ -41,12 +41,8 @@ impl Renderer {
     // Create a new Renderer with the specified window dimensions and title
     pub fn new(window: Window) -> Result<Self, RendererError> {
         let backend = MetalBackend::new(&window)?;
-        let device = backend.device().clone();
-
-        // Debug information
+        // let device = backend.device().clone();
         let size = window.inner_size();
-        // let scale_factor = window.scale_factor();
-        // println!("Window size: {:?}, Scale factor: {scale_factor}", size);
 
         let camera = Camera::new(
             Vec3::new(0.0, 0.0, 3.0),
@@ -58,7 +54,7 @@ impl Renderer {
 
         Ok(Renderer {
             backend,
-            mesh_storage: MeshStorage::new(device),
+            mesh_storage: MeshStorage::new(),
             render_queue: RenderQueue::new(),
             window,
             camera,
@@ -259,22 +255,12 @@ impl Renderer {
         TriangleBuilder::new(v1, v2, v3, color)
     }
 
-    #[allow(dead_code)]
-    pub fn create_shape(&mut self, vertices: Vec<(Vec3, Color)>) -> PrimitiveBuilder {
+    pub fn create_shape(&mut self, vertices: Vec<(Vec3, Color)>) -> ShapeData {
         let vertices = vertices
             .into_iter()
-            .map(|(pos, color)| vec3_color_to_vertex(pos, color))
+            .map(|(position, color)| vec3_color_to_vertex(position, color))
             .collect();
-        PrimitiveBuilder::new(vertices, PrimitiveType::Triangle)
-    }
-
-    #[allow(dead_code)]
-    pub fn create_mesh(&mut self, vertices: Vec<(Vec3, Color)>) -> MeshBuilder {
-        let vertices = vertices
-            .into_iter()
-            .map(|(pos, color)| vec3_color_to_vertex(pos, color))
-            .collect();
-        MeshBuilder::new().with_vertices(vertices)
+        ShapeData::new(vertices, PrimitiveType::Triangle)
     }
 }
 

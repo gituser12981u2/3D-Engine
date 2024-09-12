@@ -15,7 +15,6 @@ use std::ffi::c_void;
 pub struct RenderPipelineCache {
     device: Device,
     pipeline_state: Option<RenderPipelineState>,
-    // pipelines: Vec<Option<RenderPipelineState>>, // ID pipelines
 }
 
 impl RenderPipelineCache {
@@ -32,7 +31,6 @@ impl RenderPipelineCache {
         Ok(RenderPipelineCache {
             device: device.clone(),
             pipeline_state: None,
-            // pipelines: Vec::new(),
         })
     }
 

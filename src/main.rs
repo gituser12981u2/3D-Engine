@@ -1,7 +1,7 @@
 use env_logger::Builder;
 use glam::{Mat4, Quat, Vec3};
 use log::LevelFilter;
-use renderer::{Color, RendererSystem};
+use renderer::{shape_builders::shape_builder::ShapeBuilder, Color, RendererSystem};
 use std::time::Instant;
 
 mod physics;
@@ -27,22 +27,22 @@ macro_rules! debug_trace {
 // }
 // TODO: Make sure production code is not built with trace logging
 
-fn create_infinite_ground(size: f32, divisions: u32) -> Vec<(Vec3, Color)> {
-    let mut vertices = Vec::new();
-    let step = size / divisions as f32;
-    let half_size = size / 2.0;
-    let ground_color = Color::new(0.5, 0.5, 0.5, 1.0); // Gray color
+// fn create_infinite_ground(size: f32, divisions: u32) -> Vec<(Vec3, Color)> {
+//     let mut vertices = Vec::new();
+//     let step = size / divisions as f32;
+//     let half_size = size / 2.0;
+//     let ground_color = Color::new(0.5, 0.5, 0.5, 1.0); // Gray color
 
-    for i in 0..=divisions {
-        let x = i as f32 * step - half_size;
-        vertices.push((Vec3::new(x, 0.0, -half_size), ground_color));
-        vertices.push((Vec3::new(x, 0.0, half_size), ground_color));
-        vertices.push((Vec3::new(-half_size, 0.0, x), ground_color));
-        vertices.push((Vec3::new(half_size, 0.0, x), ground_color));
-    }
+//     for i in 0..=divisions {
+//         let x = i as f32 * step - half_size;
+//         vertices.push((Vec3::new(x, 0.0, -half_size), ground_color));
+//         vertices.push((Vec3::new(x, 0.0, half_size), ground_color));
+//         vertices.push((Vec3::new(-half_size, 0.0, x), ground_color));
+//         vertices.push((Vec3::new(half_size, 0.0, x), ground_color));
+//     }
 
-    vertices
-}
+//     vertices
+// }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     Builder::new().filter_level(LevelFilter::Debug).init();
@@ -51,19 +51,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let start_time = Instant::now();
 
     // Create the infinite ground
-    let ground_size = 1000.0;
-    let ground_divisions = 100;
-    let ground_vertices = create_infinite_ground(ground_size, ground_divisions);
+    // let ground_size = 1000.0;
+    // let ground_divisions = 100;
+    // let ground_vertices = create_infinite_ground(ground_size, ground_divisions);
 
     renderer_system.set_render_callback(move |r| {
         let elapsed = start_time.elapsed().as_secs_f32();
 
         // TODO: fix the uniform buffer so it can update per object instead fo apply transformations to all objects
         // Draw the infinite ground
-        r.create_shape(ground_vertices.clone())
-            .as_primitive()
-            .with_transform(Mat4::from_translation(Vec3::new(0.0, -2.0, 0.0)))
-            .draw(r);
+        // r.create_primitive(ground_vertices.clone())
+        //     .with_transform(Mat4::from_translation(Vec3::new(0.0, -2.0, 0.0)))
+        //     .draw(r);
 
         // Non-indexed, non-instanced primitive triangle
         // r.create_triangle(
@@ -73,7 +72,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         //     Color::new(1.0, 0.0, 0.0, 1.0),           // Green color
         // )
         // .as_primitive()
-        // .with_transform(Mat4::from_translation(Vec3::new(0.0, 0.0, 0.0)))
+        // .with_transform(Mat4::from_translation(Vec3::new(-1.0, 0.0, 0.0)))
         // .draw(r);
 
         // Define pyramid dimensions
@@ -112,7 +111,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             1, 3, 2, // Base (part 1)
             1, 4, 3, // Base (part 2)
         ];
-        r.create_mesh(pyramid_vertices)
+        r.create_shape(pyramid_vertices)
+            .as_mesh()
             .with_indices(pyramid_indices)
             .with_transform(Mat4::from_rotation_translation(
                 Quat::from_rotation_y(elapsed),

@@ -29,7 +29,6 @@ use winit::window::Window;
 
 /// Represents the Metal backend for rendering.
 pub struct MetalBackend {
-    device: Device,
     command_queue: CommandQueue,
     render_pipeline_cache: RenderPipelineCache,
     buffer_manager: BufferManager,
@@ -37,8 +36,6 @@ pub struct MetalBackend {
     layer: MetalLayer,
     depth_stencil_state: DepthStencilState,
     wireframe_mode: bool,
-    // pipeline_cache: HashMap<PipelineType, RenderPipelineId>,
-    // current_pipeline_type: PipelineType,
 }
 
 impl MetalBackend {
@@ -68,7 +65,6 @@ impl MetalBackend {
 
         info!("MetalBackend initialized successfully");
         Ok(MetalBackend {
-            device,
             command_queue,
             render_pipeline_cache,
             buffer_manager,
@@ -138,11 +134,6 @@ impl MetalBackend {
             znear: 0.0,
             zfar: 1.0,
         }
-    }
-
-    /// Returns a reference to the Metal device.
-    pub fn device(&self) -> &Device {
-        &self.device
     }
 
     /// Toggles the wireframe mode.

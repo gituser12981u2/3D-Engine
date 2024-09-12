@@ -1,6 +1,12 @@
-use glam::{Mat4, Quat, Vec3};
-use log::trace;
+//! Camera module for the renderer.
+//!
+//! This module provides a camera implementation for 3D rendering,
+//! including functionality for movement, rotation, and projection.
 
+use glam::{Mat4, Quat, Vec3};
+use log::{debug, trace};
+
+/// Represents a 3D camera with position, orientation, and projection properties.
 pub struct Camera {
     position: Vec3,
     orientation: Quat,
@@ -13,8 +19,22 @@ pub struct Camera {
 }
 
 impl Camera {
+    /// Creates a new Camera instance.
+    ///
+    /// # Arguments
+    ///
+    /// * `position` - The initial position of the camera.
+    /// * `fov` - The field of view in degrees.
+    /// * `aspect_ratio` - The aspect ratio of the viewport.
+    /// * `near` - The near clipping plane distance
+    /// * `far` - The far clipping plane distance.
+    ///
+    /// # Returns
+    ///
+    /// A new Camera instance.
     pub fn new(position: Vec3, fov: f32, aspect_ratio: f32, near: f32, far: f32) -> Self {
-        Camera {
+        debug!("Creating new Camera at position: {:?}", position);
+        Self {
             position,
             orientation: Quat::IDENTITY,
             fov,
@@ -26,20 +46,41 @@ impl Camera {
         }
     }
 
+    /// Calculates and returns the view matrix for the camera.
+    ///
+    /// # Returns
+    ///
+    /// The view matrix as a Mat4.
     pub fn get_view_matrix(&self) -> Mat4 {
         let forward = self.orientation * -Vec3::Z;
         let up = self.orientation * Vec3::Y;
-        Mat4::look_at_rh(self.position, self.position + forward, up)
+        let view_matrix = Mat4::look_at_rh(self.position, self.position + forward, up);
+        trace!("Calculated view matrix: {:?}", view_matrix);
+        view_matrix
     }
 
+    /// Calculates and returns the projection matrix for the camera.
+    ///
+    /// # Returns
+    ///
+    /// The projection matrix as a Mat4.
     pub fn get_projection_matrix(&self) -> Mat4 {
-        Mat4::perspective_rh(
+        let proj_matrix = Mat4::perspective_rh(
             self.fov.to_radians(),
             self.aspect_ratio,
             self.near,
             self.far,
-        )
+        );
+        trace!("Calculated projection matrix: {:?}", proj_matrix);
+        proj_matrix
     }
+
+    /// Process keyboard input to move the camera
+    ///
+    /// # Arguments
+    ///
+    /// * `direction` - The direction of movement.
+    /// * `delta_time` - The time elapsed since the last frame.
     pub fn process_keyboard(&mut self, direction: CameraMovement, delta_time: f32) {
         let velocity = self.movement_speed * delta_time;
         let forward = self.orientation * -Vec3::Z;
@@ -56,6 +97,12 @@ impl Camera {
         }
     }
 
+    /// Processes mouse movement to rotate the camera.
+    ///
+    /// # Arguments
+    ///
+    /// * `x_offset` - The mouse movement in the x-axis.
+    /// * `y_offset` - The mouse movement in the y-axis.
     pub fn process_mouse_movement(&mut self, x_offset: f32, y_offset: f32) {
         let x_offset = x_offset * self.mouse_sensitivity;
         let y_offset = y_offset * self.mouse_sensitivity;
@@ -73,16 +120,29 @@ impl Camera {
         );
     }
 
+    /// Processes mouse scroll to adjust the camera's field of view.
+    ///
+    /// # Arguments
+    ///
+    /// * `y_offset` - The scroll amount.
     pub fn process_mouse_scroll(&mut self, y_offset: f32) {
         self.fov -= y_offset;
         self.fov = self.fov.clamp(1.0, 90.0);
+        debug!("Camera FOV adjusted to : {}", self.fov);
     }
 
+    /// Sets the aspect ratio of the camera's viewport.
+    ///
+    /// # Arguments
+    ///
+    /// * `aspect_ratio` - The new aspect ratio.
     pub fn set_aspect_ratio(&mut self, aspect_ratio: f32) {
         self.aspect_ratio = aspect_ratio;
+        debug!("Camera aspect ratio set to: {aspect_ratio}");
     }
 }
 
+/// Enum representing different camera movement directions.
 pub enum CameraMovement {
     Forward,
     Backward,
