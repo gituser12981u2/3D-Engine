@@ -13,9 +13,10 @@ pub fn compile_metal_shaders() {
         let path = entry.path();
         if path.extension().unwrap_or_default() == "metal" {
             let file_stem = path.file_stem().unwrap().to_str().unwrap();
-            let air_file = format!("{}/{}.air", out_dir, file_stem);
+            let air_file = format!("{out_dir}/{file_stem}.air");
 
-            Command::new("xcrun")
+            println!("Compiling shader: {path:?}");
+            let status = Command::new("xcrun")
                 .args([
                     "-sdk",
                     "macosx",
@@ -27,11 +28,15 @@ pub fn compile_metal_shaders() {
                 ])
                 .status()
                 .expect("Failed to compile shader");
+
+            if !status.success() {
+                panic!("Failed to compile shader: {path:?}");
+            }
         }
     }
 
     // Combine .air files into a single .metallib file
-    let metallib_file = format!("{}/shaders.metallib", out_dir);
+    let metallib_file = format!("{out_dir}/shaders.metallib");
     let mut command = Command::new("xcrun");
     command.args(["-sdk", "macosx", "metallib"]);
 
@@ -44,7 +49,11 @@ pub fn compile_metal_shaders() {
     }
 
     command.args(["-o", &metallib_file]);
-    command.status().expect("Failed to create metallib");
+    let status = command.status().expect("Failed to create metallib");
 
-    println!("cargo:rustc-env=METAL_SHADER_LIB={}", metallib_file);
+    if !status.success() {
+        panic!("Failed to create metallib");
+    }
+
+    println!("cargo:rustc-env=METAL_SHADER_LIB={metallib_file}");
 }

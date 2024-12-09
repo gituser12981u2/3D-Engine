@@ -1,12 +1,12 @@
 # 3D Engine
 
-This project s not a typical game engine, but a specialized 3D simulation engine designed for creating a highly realistic, physics-driven universe simulation. It draws inspiration from games like No Man's Sky, but aims to provide a much more realistic and detailed simulation for physics, economics, and civilization development.
+This project is not a typical game engine, but an ambitious attempt to create a highly realistic, physics-driven universe simulation from the quantum scale to the cosmic scale. It aims to simulate the entire process of cosmic evolution, from the Big Bang to the formation of complex civilizations.
 
-## Project Goals
+## Project Vision
 
-- Create a vast, procedurally generated universe with realistic celestial mechanics, planetary development, and object interactions
+- Create a vast, procedurally generated universe with unprecedented physics accuracy, in both the creation of the universe and the live universe.
+- Simulate everything from quantum fluctuations in the early universe to the rise and fall of galactic civilizations, all based on fundamental physical principles
 - Develop complex economic models for resource distribution and trade
-- Simulate the rise and fall fo civilizations based on environmental and societal factors.
 - Provide a platform for exploring theoretical models of space colonization, long-term civilization development, the underlying physics of the cosmos
 
 ## Key Features

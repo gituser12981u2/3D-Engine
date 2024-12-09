@@ -1,120 +1,161 @@
+//! Metal backend for the renderer.
+//!
+//! This module provides the implementation of the Metal graphics backend,
+//! which is responsible for rendering using the Metal API on macOS platforms.
+//!
+//! It includes the main `MetalBackend` struct and associated implementations
+//! for handling rendering operations, buffer management, and pipeline state creation.
+
 use super::buffer_manager::BufferManager;
-use super::pipeline::create_render_pipeline;
-use super::MacOSWindow;
+use super::pipeline::{create_default_pipeline_descriptor, RenderPipelineCache};
+use super::texture_manager::TextureManager;
 use crate::renderer::backend::GraphicsBackend;
-use crate::renderer::common::{RendererError, Vertex};
+use crate::renderer::common::{BackendDrawCommand, RendererError, TextureId, Uniforms, Vertex};
+use crate::renderer::InstanceData;
 use cocoa::base::id as cocoa_id;
 use core_graphics::display::CGSize;
-use metal::MTLViewport;
+use log::{debug, info, trace, warn};
+use metal::{
+    foreign_types::ForeignTypeRef, BufferRef, DepthStencilState, MTLRegion, MTLViewport,
+    MetalDrawableRef, RenderCommandEncoderRef, RenderPassDescriptorRef, RenderPipelineDescriptor,
+    TextureDescriptor, TextureRef,
+};
 use metal::{
     objc::{msg_send, sel, sel_impl},
-    CommandQueue, Device, MetalLayer, RenderPipelineState,
+    CommandQueue, Device, MetalLayer,
 };
+use raw_window_handle::HasWindowHandle;
+use winit::window::Window;
 
+/// Represents the Metal backend for rendering.
 pub struct MetalBackend {
-    device: Device,
     command_queue: CommandQueue,
-    pipeline_state: RenderPipelineState,
+    render_pipeline_cache: RenderPipelineCache,
     buffer_manager: BufferManager,
+    texture_manager: TextureManager,
     layer: MetalLayer,
-    viewport: Viewport,
+    depth_stencil_state: DepthStencilState,
+    wireframe_mode: bool,
 }
 
-struct Viewport {
-    x: u32,
-    y: u32,
-    width: u32,
-    height: u32,
-}
+impl MetalBackend {
+    /// Creates a new `MetalBackend` instance.
+    ///
+    /// # Arguments
+    ///
+    /// * `window` - The window to which the Metal layer will be attached.
+    ///
+    /// # Returns
+    ///
+    /// Returns a Result containing the `MetalBackend` instance or a `RendererError`.
+    pub fn new(window: &Window) -> Result<Self, RendererError> {
+        let device = Device::system_default().ok_or(RendererError::DeviceNotFound)?;
+        info!("Metal device initialized");
 
-impl Viewport {
-    pub fn new(x: u32, y: u32, width: u32, height: u32) -> Self {
-        Viewport {
-            x,
-            y,
-            width,
-            height,
+        let command_queue = device.new_command_queue();
+        let mut render_pipeline_cache = RenderPipelineCache::new(&device)?;
+        let buffer_manager = BufferManager::new(&device)?;
+        let texture_manager = TextureManager::new(&device);
+
+        let (default_pipeline_descriptor, depth_stencil_state) =
+            create_default_pipeline_descriptor(&device)?;
+        render_pipeline_cache.create_pipeline_state(&default_pipeline_descriptor)?;
+
+        let layer = Self::create_metal_layer_for_window(window, &device)?;
+
+        info!("MetalBackend initialized successfully");
+        Ok(MetalBackend {
+            command_queue,
+            render_pipeline_cache,
+            buffer_manager,
+            texture_manager,
+            layer,
+            depth_stencil_state,
+            wireframe_mode: false,
+        })
+    }
+
+    /// Creates a Metal Layer for the given window.
+    ///
+    /// # Arguments
+    ///
+    /// * `window` - The window to which the Metal layer will be attached.
+    /// * `device` - The Metal device.
+    ///
+    /// # Returns
+    ///
+    /// Returns a Result containing the `MetalLayer` or a `RendererError`.
+    fn create_metal_layer_for_window(
+        window: &Window,
+        device: &Device,
+    ) -> Result<MetalLayer, RendererError> {
+        match window.window_handle()?.as_raw() {
+            raw_window_handle::RawWindowHandle::AppKit(handle) => {
+                let ns_view = handle.ns_view.as_ptr() as cocoa_id;
+                let layer = MetalLayer::new();
+
+                layer.set_device(device);
+                layer.set_pixel_format(metal::MTLPixelFormat::BGRA8Unorm);
+                layer.set_presents_with_transaction(false);
+
+                let size = window.inner_size();
+                let scale_factor = window.scale_factor();
+
+                let physical_metal_size = CGSize::new(size.width as f64, size.height as f64);
+                layer.set_drawable_size(physical_metal_size);
+
+                debug!(
+                    "Setting Metal layer drawable size to: {:?} and scale factor is: {:?}",
+                    physical_metal_size, scale_factor
+                );
+
+                unsafe {
+                    let () = msg_send![ns_view, setLayer:layer.as_ref()];
+                    let () = msg_send![ns_view, setWantsLayer:true];
+                }
+
+                Ok(layer)
+            }
+            _ => {
+                warn!("Unsupported platform for Metal rendering");
+                Err(RendererError::UnsupportedPlatform)
+            }
         }
     }
 
-    pub fn to_metal_viewport(&self) -> MTLViewport {
+    /// Creates a viewport for the given drawable
+    fn create_viewport(&self, drawable: &MetalDrawableRef) -> MTLViewport {
+        let texture = drawable.texture();
         MTLViewport {
-            originX: self.x as f64,
-            originY: self.y as f64,
-            width: self.width as f64,
-            height: self.height as f64,
+            originX: 0.0,
+            originY: 0.0,
+            width: texture.width() as f64,
+            height: texture.height() as f64,
             znear: 0.0,
             zfar: 1.0,
         }
     }
-}
 
-impl MetalBackend {
-    pub fn new(window: &MacOSWindow) -> Result<Self, RendererError> {
-        let device = Device::system_default().ok_or(RendererError::DeviceNotFound)?;
-        let command_queue = device.new_command_queue();
-        let pipeline_state = create_render_pipeline(&device)?;
-        let buffer_manager = BufferManager::new();
-        let metal_layer = Self::setup_metal_layer(&device, window.get_view())?;
-        let (width, height) = window.get_size();
-
-        Ok(MetalBackend {
-            device,
-            command_queue,
-            pipeline_state,
-            buffer_manager,
-            layer: metal_layer,
-            viewport: Viewport::new(0, 0, width, height),
-        })
-    }
-
-    fn setup_metal_layer(device: &Device, view: cocoa_id) -> Result<MetalLayer, RendererError> {
-        unsafe {
-            let layer = MetalLayer::new();
-            layer.set_device(device);
-            layer.set_pixel_format(metal::MTLPixelFormat::BGRA8Unorm);
-            layer.set_presents_with_transaction(false);
-
-            let bounds: CGSize = msg_send![view, bounds];
-            let () = msg_send![layer.as_ref(), setFrame:bounds];
-
-            let () = msg_send![view, setLayer:layer.as_ref()];
-            let () = msg_send![view, setWantsLayer:true];
-
-            Ok(layer)
-        }
+    /// Toggles the wireframe mode.
+    ///
+    /// This method switches between filled and wireframe rendering modes
+    pub fn toggle_wireframe_mode(&mut self) {
+        self.wireframe_mode = !self.wireframe_mode;
+        info!("Wireframe mode toggled: {}", self.wireframe_mode);
     }
 }
 
 impl GraphicsBackend for MetalBackend {
-    fn prepare_frame(&mut self) -> Result<(), RendererError> {
-        // Any per-frame setup could go here
-        Ok(())
-    }
-
-    fn update_vertex_buffer(&mut self, vertices: &[Vertex]) -> Result<(), RendererError> {
-        println!("Updating vertex buffer with {} vertices", vertices.len());
-        println!("Vertex data:");
-        for (i, vertex) in vertices.iter().enumerate() {
-            println!(
-                "Vertex {}: pos={:?}, color={:?}",
-                i, vertex.position, vertex.color
-            )
-        }
-        self.buffer_manager
-            .update_vertex_buffer(&self.device, vertices)
-    }
-
-    fn update_index_buffer(&mut self, indices: &[u32]) -> Result<(), RendererError> {
-        println!("Updating vertex buffer with {} indices", indices.len());
-        self.buffer_manager
-            .update_index_buffer(&self.device, indices)
-    }
-
-    fn draw(&mut self, vertex_count: u32, index_count: u32) -> Result<(), RendererError> {
-        println!("Drawing: {vertex_count} vertices, {index_count} indices");
-
-        let command_buffer = self.command_queue.new_command_buffer();
+    /// Executes a draw command.
+    ///
+    /// # Arguments
+    ///
+    /// * `draw_command` - The draw command to execute.
+    ///
+    /// # Returns
+    ///
+    /// Returns a Result indicating success or a `RendererError`.
+    fn draw(&mut self, draw_command: BackendDrawCommand) -> Result<(), RendererError> {
         let descriptor = metal::RenderPassDescriptor::new();
 
         let drawable = self
@@ -124,102 +165,359 @@ impl GraphicsBackend for MetalBackend {
 
         let texture = drawable.texture();
 
+        // Update depth texture if needed
+        let texture_size = CGSize::new(texture.width() as f64, texture.height() as f64);
+        self.buffer_manager.ensure_depth_texture(texture_size);
+
         let color_attachment = descriptor.color_attachments().object_at(0).unwrap();
         color_attachment.set_texture(Some(texture));
         color_attachment.set_load_action(metal::MTLLoadAction::Clear);
         color_attachment.set_clear_color(metal::MTLClearColor::new(0.1, 0.1, 0.1, 1.0)); // Dark gray background
         color_attachment.set_store_action(metal::MTLStoreAction::Store);
 
+        // Set up depth attachment
+        let depth_attachment = descriptor.depth_attachment().unwrap();
+        depth_attachment.set_texture(
+            self.buffer_manager
+                .depth_texture
+                .as_ref()
+                .map(|t| t as &TextureRef),
+        );
+        depth_attachment.set_load_action(metal::MTLLoadAction::Clear);
+        depth_attachment.set_clear_depth(1.0);
+        depth_attachment.set_store_action(metal::MTLStoreAction::Store);
+
+        let command_buffer = self.command_queue.new_command_buffer();
         let encoder = command_buffer.new_render_command_encoder(descriptor);
-        encoder.set_render_pipeline_state(&self.pipeline_state);
 
-        // Set the viewport
-        encoder.set_viewport(self.viewport.to_metal_viewport());
+        let viewport = self.create_viewport(drawable);
+        let mut render_pass = RenderPass::new(encoder, viewport);
 
-        if let Some(vertex_buffer) = &self.buffer_manager.vertex_buffer {
-            encoder.set_vertex_buffer(0, Some(vertex_buffer), 0);
-            println!("Vertex buffer set");
-        } else {
-            println!("No vertex buffer available");
-        }
+        render_pass.set_depth_stencil_state(&self.depth_stencil_state);
+        render_pass.set_wireframe_mode(self.wireframe_mode);
 
-        if let Some(index_buffer) = &self.buffer_manager.index_buffer {
-            println!("Drawing indexed primitives");
-            encoder.draw_indexed_primitives(
-                metal::MTLPrimitiveType::Triangle,
-                index_count as u64,
-                metal::MTLIndexType::UInt32,
-                index_buffer,
-                0,
-            );
-        } else {
-            println!("Drawing primitives");
-            encoder.draw_primitives(metal::MTLPrimitiveType::Triangle, 0, vertex_count as u64);
-        }
+        // Set the pipeline state
+        let pipeline_state = self
+            .render_pipeline_cache
+            .get_pipeline_state()
+            .ok_or(RendererError::InvalidPipelineId)?;
+        render_pass.set_pipeline(pipeline_state);
 
-        encoder.end_encoding();
+        // Set vertex and uniform buffers
+        render_pass.set_vertex_buffer(0, Some(&self.buffer_manager.vertex_buffer), 0);
+        render_pass.set_vertex_buffer(1, Some(&self.buffer_manager.uniform_buffer), 0);
+        trace!("Vertex and uniform buffers set");
+
+        render_pass.draw(draw_command, &self.buffer_manager);
+        render_pass.end();
+
         command_buffer.present_drawable(drawable);
         command_buffer.commit();
-
-        println!("Draw call completed");
 
         Ok(())
     }
 
-    fn present_frame(&mut self) -> Result<(), RendererError> {
-        // The actual submission is done in the draw method,
-        // so this method is left empty or used for any post-frame operations
+    /// Updates the vertex buffer with new vertex data.
+    ///
+    /// # Arguments
+    ///
+    /// * `vertices` - The new vertex data to upload.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` indicating success or a `RendererError`.
+    fn update_vertex_buffer(&mut self, vertices: &[Vertex]) -> Result<(), RendererError> {
+        trace!("Updating vertex buffer with {} vertices", vertices.len());
+        self.buffer_manager.update_vertex_buffer(vertices)
+    }
+
+    /// Updates the index buffer with new index data.
+    ///
+    /// # Arguments
+    ///
+    /// * `indices` - The new index data to upload.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` indicating success or a `RendererError`.
+    fn update_index_buffer(&mut self, indices: &[u32]) -> Result<(), RendererError> {
+        trace!("Updating index buffer with {} indices", indices.len());
+        self.buffer_manager.update_index_buffer(indices)
+    }
+
+    /// Updates the instance buffer with new instance data.
+    ///
+    /// # Arguments
+    ///
+    /// * `instances` - A new instance data to upload.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` indicating success of a `RendererError`.
+    fn update_instance_buffer(&mut self, instances: &[InstanceData]) -> Result<(), RendererError> {
+        trace!(
+            "Updating instance buffer with {} instances",
+            instances.len()
+        );
+        self.buffer_manager.update_instance_buffer(instances)
+    }
+
+    /// Updates the uniform buffer with new uniform data.
+    ///
+    /// # Arguments
+    ///
+    /// * `uniforms` - The new instance data to upload.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` indicating success or a `RendererError`.
+    fn update_uniform_buffer(&mut self, uniforms: &Uniforms) -> Result<(), RendererError> {
+        trace!("Updating uniform buffer");
+        self.buffer_manager.update_uniform_buffer(uniforms)
+    }
+
+    /// Creates a new texture.
+    ///
+    /// # Arguments
+    ///
+    /// * `descriptor` - The descriptor for the new texture to create.
+    ///
+    /// # Returns
+    ///
+    /// Returns a `TextureId` for the newly created texture.
+    fn create_texture(&mut self, descriptor: &TextureDescriptor) -> TextureId {
+        debug!("Creating new texture");
+        self.texture_manager.create_texture(descriptor)
+    }
+
+    /// Updates the existing texture with new data.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The ID of the texture to update.
+    /// * `region` - The region of the texture to update.
+    /// * `mipmap_level` - The mipmap level to update.
+    /// * `slice` - The slice of the texture to update.
+    /// * `data` - The new texture data.
+    /// * `bytes_per_row` - The number of bytes per row in the texture data.
+    /// * `bytes_per_image` - The number of bytes per image in the texture data.
+    ///
+    /// # Returns
+    ///
+    /// Returns a Result indicating success or a `RendererError`.
+    fn update_texture(
+        &mut self,
+        id: TextureId,
+        region: MTLRegion,
+        mipmap_level: u64,
+        slice: u64,
+        data: &[u8],
+        bytes_per_row: u64,
+        bytes_per_image: u64,
+    ) -> Result<(), RendererError> {
+        trace!("Updating texture: {:?}", id);
+        self.texture_manager.update_texture(
+            id,
+            region,
+            mipmap_level,
+            slice,
+            data,
+            bytes_per_row,
+            bytes_per_image,
+        )
+    }
+
+    fn create_render_pipeline_state(
+        &mut self,
+        descriptor: &RenderPipelineDescriptor,
+    ) -> Result<(), RendererError> {
+        debug!("Creating new render pipeline state");
+        self.render_pipeline_cache.create_pipeline_state(descriptor)
+    }
+
+    // TODO: Use render pass for batch calling
+    #[allow(unused_variables)]
+    fn render_pass(&mut self, descriptor: &RenderPassDescriptorRef) -> Result<(), RendererError> {
+        let drawable = self
+            .layer
+            .next_drawable()
+            .ok_or(RendererError::DrawFailed("No next drawable".to_string()))?;
+
+        // let command_buffer = self.command_queue.new_command_buffer();
+        // let encoder = command_buffer.new_render_command_encoder(descriptor);
+
+        let viewport = MTLViewport {
+            originX: 0.0,
+            originY: 0.0,
+            width: drawable.texture().width() as f64,
+            height: drawable.texture().height() as f64,
+            znear: 0.0,
+            zfar: 1.0,
+        };
+
+        trace!("Created render pass with viewport: {:?}", viewport);
+        // Ok(RenderPass::new(encoder, viewport))
         Ok(())
+    }
+}
+
+/// Represents a render pass in the Metal backend.
+pub struct RenderPass<'a> {
+    encoder: &'a RenderCommandEncoderRef,
+    viewport: MTLViewport,
+}
+
+impl<'a> RenderPass<'a> {
+    /// Creates a new `RenderPass` instance.
+    pub fn new(encoder: &'a RenderCommandEncoderRef, viewport: MTLViewport) -> Self {
+        RenderPass { encoder, viewport }
+    }
+
+    /// Sets the render pipeline state.
+    pub fn set_pipeline(&mut self, pipeline: &metal::RenderPipelineState) {
+        self.encoder.set_render_pipeline_state(pipeline);
+    }
+
+    /// Sets a vertex buffer.
+    pub fn set_vertex_buffer(&self, index: u64, buffer: Option<&BufferRef>, offset: u64) {
+        self.encoder.set_vertex_buffer(index, buffer, offset);
+    }
+
+    /// Sets the depth stencil state.
+    pub fn set_depth_stencil_state(&mut self, state: &DepthStencilState) {
+        self.encoder.set_depth_stencil_state(state);
+    }
+
+    /// Sets the wireframe mode for rendering.
+    pub fn set_wireframe_mode(&mut self, wireframe: bool) {
+        unsafe {
+            let raw_encoder = self.encoder.as_ptr();
+            let () = msg_send![raw_encoder, setTriangleFillMode:
+            if wireframe {
+                metal::MTLTriangleFillMode::Lines
+            } else {
+                metal::MTLTriangleFillMode::Fill
+            }
+            ];
+        }
+        trace!("Wireframe mode set to: {wireframe}");
+    }
+
+    /// Executes the draw command.
+    fn draw(&mut self, draw_command: BackendDrawCommand, buffer_manager: &BufferManager) {
+        self.encoder.set_viewport(self.viewport);
+
+        match draw_command {
+            BackendDrawCommand::Basic {
+                primitive_type,
+                vertex_start,
+                vertex_count,
+            } => {
+                trace!(
+                    "Drawing basic primitives: type={:?}, start={}, count={}",
+                    primitive_type,
+                    vertex_start,
+                    vertex_count
+                );
+                self.encoder
+                    .draw_primitives(primitive_type.into(), vertex_start, vertex_count);
+            }
+            BackendDrawCommand::Indexed {
+                primitive_type,
+                index_count,
+                index_type,
+                index_buffer_offset,
+            } => {
+                trace!(
+                    "Drawing indexed primitives: type={:?}, count={}, index_type={:?}, offset={}",
+                    primitive_type,
+                    index_count,
+                    index_type,
+                    index_buffer_offset
+                );
+                self.encoder.draw_indexed_primitives(
+                    primitive_type.into(),
+                    index_count,
+                    index_type.into(),
+                    &buffer_manager.index_buffer,
+                    index_buffer_offset,
+                );
+            }
+            BackendDrawCommand::Instanced {
+                primitive_type,
+                vertex_start,
+                vertex_count,
+                instance_count,
+            } => {
+                trace!(
+                    "Drawing instanced primitives: type={:?}, start={}, count={}, instances={}",
+                    primitive_type,
+                    vertex_start,
+                    vertex_count,
+                    instance_count
+                );
+                self.encoder
+                    .set_vertex_buffer(2, Some(&buffer_manager.instance_buffer), 0);
+                self.encoder.draw_primitives_instanced(
+                    primitive_type.into(),
+                    vertex_start,
+                    vertex_count,
+                    instance_count,
+                );
+            }
+            BackendDrawCommand::IndexedInstanced {
+                primitive_type,
+                index_count,
+                index_type,
+                index_buffer_offset,
+                instance_count,
+            } => {
+                trace!("Drawing indexed instanced primitives: type={:?}, count={}, index_type={:?}, offset={}, instances={}", 
+                        primitive_type, index_count, index_type, index_buffer_offset, instance_count);
+                self.encoder
+                    .set_vertex_buffer(2, Some(&buffer_manager.instance_buffer), 0);
+                self.encoder.draw_indexed_primitives_instanced(
+                    primitive_type.into(),
+                    index_count,
+                    index_type.into(),
+                    &buffer_manager.index_buffer,
+                    index_buffer_offset,
+                    instance_count,
+                );
+            }
+        }
+    }
+
+    pub fn end(self) {
+        self.encoder.end_encoding();
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::MetalBackend;
-    use crate::renderer::backend::metal::pipeline::create_render_pipeline;
-    use cocoa::base::id as cocoa_id;
-    use metal::foreign_types::ForeignType;
-    use metal::{Device, MTLPixelFormat};
-    use objc::{class, msg_send, sel, sel_impl};
+    use super::RenderPass;
+    use metal::{Device, MTLViewport};
 
     #[test]
-    fn test_setup_metal_layer() {
-        let device = Device::system_default().unwrap();
-        let view: cocoa_id = unsafe { msg_send![class!(NSView), new] };
-
-        let layer_result = MetalBackend::setup_metal_layer(&device, view);
-        assert!(layer_result.is_ok());
-
-        let layer = layer_result.unwrap();
-
-        unsafe {
-            let layer_device: *mut std::os::raw::c_void = msg_send![layer.as_ref(), device];
-            assert_eq!(layer_device, device.as_ptr() as *mut std::os::raw::c_void);
-
-            let pixel_format: MTLPixelFormat = msg_send![layer.as_ref(), pixelFormat];
-            assert_eq!(pixel_format, MTLPixelFormat::BGRA8Unorm);
-
-            let presents_with_transaction: bool =
-                msg_send![layer.as_ref(), presentsWithTransaction];
-            assert_eq!(presents_with_transaction, false);
-
-            // Check if the layer is properly set on the view
-            let view_layer: cocoa_id = msg_send![view, layer];
-            assert_eq!(view_layer as *const _, layer.as_ptr() as *const _);
-
-            let wants_layer: bool = msg_send![view, wantsLayer];
-            assert_eq!(wants_layer, true);
-        }
-    }
-
-    #[test]
-    fn test_create_render_pipeline() {
+    #[cfg_attr(feature = "skip_metal_tests", ignore)]
+    // Skip test because MTLViewport cannot be made in CI's headless macOS environment
+    fn test_render_pass_creation() {
         let device = Device::system_default().expect("No Metal device found");
-        let result = create_render_pipeline(&device);
-        assert!(
-            result.is_ok(),
-            "Failed to create render pipeline: {:?}",
-            result.err()
-        );
+        let command_queue = device.new_command_queue();
+        let command_buffer = command_queue.new_command_buffer();
+        let descriptor = metal::RenderPassDescriptor::new();
+        let encoder = command_buffer.new_render_command_encoder(&descriptor);
+        let viewport = MTLViewport {
+            originX: 0.0,
+            originY: 0.0,
+            width: 800.0,
+            height: 600.0,
+            znear: 0.0,
+            zfar: 1.0,
+        };
+
+        let render_pass = RenderPass::new(encoder, viewport);
+        assert_eq!(render_pass.viewport.width, 800.0);
+        assert_eq!(render_pass.viewport.height, 600.0);
     }
 }

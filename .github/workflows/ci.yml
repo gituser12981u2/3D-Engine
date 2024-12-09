@@ -2,10 +2,9 @@ name: Rust CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ master, develop ]
   pull_request:
-    branches: [ main ]
-
+    branches: [ master, develop ]
 
 env:
   CARGO_TERM_COLOR: always
@@ -14,6 +13,10 @@ jobs:
   test:
     name: Test
     runs-on: macos-latest
+    env:
+      METAL_DEVICE_WRAPPER_TYPE: 1
+      METAL_DEBUG_ERROR_MODE: 10
+      RUST_BACKTRACE: 1
     steps:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
@@ -21,9 +24,9 @@ jobs:
           profile: minimal
           toolchain: stable
           override: true
-      - uses: actions-rs/cargo@v1
-        with:
-          command: test
+      - name: Run tests
+        run: |
+          cargo test --features skip_metal_tests --verbose -- --nocapture --test-threads=1
 
   fmt:
     name: Rustfmt
@@ -79,7 +82,7 @@ jobs:
   version:
     name: Update version
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     steps:
       - uses: actions/checkout@v2
         with:
@@ -97,7 +100,8 @@ jobs:
         run: |
           # Parse the most recent commit message
           COMMIT_MSG=$(git log -1 --pretty=%B)
-          
+          # Get current version
+          CURRENT_VERSION=$(cargo pkgid | cut -d# -f2)
           # Determine version bump type
           if echo "$COMMIT_MSG" | grep -qE '^BREAKING CHANGE:'; then
             BUMP_TYPE="major"
@@ -106,12 +110,19 @@ jobs:
           else
             BUMP_TYPE="patch"
           fi
-          
           # Bump version in Cargo.toml
-          cargo bump $BUMP_TYPE
-          
-          # Get the new version
-          NEW_VERSION=$(cargo pkgid | cut -d# -f2)
+          if [[ $CURRENT_VERSION == *"-alpha"* ]]; then
+            # If it's an alpha version, increment the alpha number
+            BASE_VERSION=$(echo $CURRENT_VERSION | cut -d- -f1)
+            ALPHA_NUM=$(echo $CURRENT_VERSION | cut -d. -f4)
+            NEW_ALPHA_NUM=$((ALPHA_NUM + 1))
+            NEW_VERSION="${BASE_VERSION}-alpha.${NEW_ALPHA_NUM}"
+            cargo set-version $NEW_VERSION
+          else
+            # If it's not an alpha version, bump according to semantic versioning
+            cargo bump $BUMP_TYPE
+            NEW_VERSION=$(cargo pkgid | cut -d# -f2)
+          fi
           echo "::set-output name=new_version::$NEW_VERSION"
       - name: Commit and push changes
         run: |
