@@ -19,14 +19,6 @@ macro_rules! debug_trace {
     ($($arg:tt)*) => {};
 }
 
-// Usage in your code
-// use crate::debug_trace;
-
-// fn some_function() {
-//     debug_trace!("This will only appear in debug builds");
-// }
-// TODO: Make sure production code is not built with trace logging
-
 // fn create_infinite_ground(size: f32, divisions: u32) -> Vec<(Vec3, Color)> {
 //     let mut vertices = Vec::new();
 //     let step = size / divisions as f32;
@@ -58,7 +50,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     renderer_system.set_render_callback(move |r| {
         let elapsed = start_time.elapsed().as_secs_f32();
 
-        // TODO: fix the uniform buffer so it can update per object instead fo apply transformations to all objects
+        // TODO: draw infinite ground with instance buffer, not uniform buffer.
         // Draw the infinite ground
         // r.create_primitive(ground_vertices.clone())
         //     .with_transform(Mat4::from_translation(Vec3::new(0.0, -2.0, 0.0)))

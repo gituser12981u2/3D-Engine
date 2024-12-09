@@ -9,11 +9,13 @@ use super::{
     },
     Camera, Color, RendererError,
 };
-use crate::renderer::{
-    backend::metal::MetalBackend, camera::CameraMovement, render_queue::RenderQueue,
+use crate::{
+    debug_trace,
+    renderer::{backend::metal::MetalBackend, camera::CameraMovement, render_queue::RenderQueue},
 };
 use glam::Vec3;
-use std::{cell::RefCell, mem, rc::Rc};
+use log::info;
+use std::{cell::RefCell, mem, rc::Rc, time::Instant};
 use winit::{
     dpi::PhysicalSize,
     event::{Event, KeyEvent, MouseScrollDelta, WindowEvent},
@@ -65,10 +67,16 @@ impl Renderer {
     pub fn render(&mut self) -> Result<(), RendererError> {
         // TODO: sort batches in an efficient manner
         // TODO: Implement Frustum Culling
+
+        let render_start = Instant::now();
+        debug_trace!("Starting render at {:?}", render_start);
+
         let view_projection_matrix =
             self.camera.get_projection_matrix() * self.camera.get_view_matrix();
 
+        // Implicitly clear the render queue by taking ownership of the draw commands
         let draw_commands = mem::take(&mut self.render_queue.draw_commands);
+        debug_trace!("Clearing RenderQueue at {:?}", Instant::now());
 
         for draw_command in draw_commands {
             match &draw_command {
@@ -117,9 +125,7 @@ impl Renderer {
             self.backend.draw(backend_draw_command)?;
         }
 
-        // Clear the render queue after drawing
-        self.render_queue.clear();
-
+        debug_trace!("Finished render at {:?}", Instant::now());
         Ok(())
     }
 
@@ -284,6 +290,7 @@ impl RendererSystem {
             .map_err(|e| RendererError::WindowCreationFailed(e.to_string()))?;
 
         let renderer = Rc::new(RefCell::new(Renderer::new(window)?));
+        info!("Initializing renderer system with {width}x{height} window");
 
         Ok(RendererSystem {
             renderer,
@@ -403,11 +410,6 @@ impl RendererSystem {
                             // Draw objects
                             if let Err(e) = (self.render_callback)(&mut renderer) {
                                 eprintln!("Error in render callback: {:?}", e);
-                            }
-
-                            // Present the frame
-                            if let Err(e) = renderer.render() {
-                                eprintln!("Error rendering: {:?}", e);
                             }
                         }
                         _ => {}

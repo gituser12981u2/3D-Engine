@@ -169,6 +169,7 @@ impl BufferManager {
     /// # Returns
     ///
     /// A `Result` indicating success or a `RendererError`.
+    // TODO: Make a uniform buffer pool to allow multiple objects in a scene
     pub fn update_uniform_buffer(&mut self, uniforms: &Uniforms) -> Result<(), RendererError> {
         trace!("Updating uniform buffer");
         unsafe {

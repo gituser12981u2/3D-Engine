@@ -1,9 +1,18 @@
+//! Render Queue Module
+//!
+//! The module provides structures and implementations for managing draw commands
+//! in a rendering system. It includes types for instance data, draw commands,
+//! and a render queue to manage these commands efficiently.
+
 use super::{
     common::{PrimitiveType, Vertex},
     Color,
 };
+use crate::debug_trace;
 use glam::Mat4;
+use log::{debug, trace};
 
+/// Represents instance-specific data for instanced rendering.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct InstanceData {
     pub model_matrix: Mat4,
@@ -11,15 +20,22 @@ pub struct InstanceData {
 }
 
 impl InstanceData {
+    /// Creates a new `InstanceData`.
+    ///
+    /// # Arguments
+    ///
+    /// * `model_matrix` - The model matrix for this instance.
+    /// * `color` - The color for this instance.
     #[allow(dead_code)]
     pub fn new(model_matrix: Mat4, color: Color) -> Self {
-        InstanceData {
+        Self {
             model_matrix,
             color,
         }
     }
 }
 
+/// Represents a draw command for the renderer.
 #[derive(Clone)]
 pub enum DrawCommand {
     Mesh {
@@ -37,21 +53,28 @@ pub enum DrawCommand {
 }
 
 impl DrawCommand {
+    /// Returns a reference to the instance data if present.
     pub fn instance_data(&self) -> Option<&Vec<InstanceData>> {
         match self {
-            DrawCommand::Mesh { instance_data, .. } => instance_data.as_ref(),
-            DrawCommand::Primitive { instance_data, .. } => instance_data.as_ref(),
+            DrawCommand::Mesh { instance_data, .. }
+            | DrawCommand::Primitive { instance_data, .. } => instance_data.as_ref(),
         }
     }
 }
 
+/// A builder for creating `DrawCommand's`.
 pub struct DrawCommandBuilder {
     command: DrawCommand,
 }
 
 impl DrawCommandBuilder {
+    /// Creates a new `DrawCommandBuilder` for a mesh.
+    ///
+    /// # Arguments
+    ///
+    /// * `mesh_id` - The ID of the mesh to draw.
     pub fn new_mesh(mesh_id: usize) -> Self {
-        DrawCommandBuilder {
+        Self {
             command: DrawCommand::Mesh {
                 mesh_id,
                 instance_data: None,
@@ -60,12 +83,19 @@ impl DrawCommandBuilder {
         }
     }
 
+    /// Creates a new `DrawCommandBuilder` for a primitive.
+    ///
+    /// # Arguments
+    ///
+    /// * `vertices` - The vertices of the primitive.
+    /// * `indices` - Optional indices for indexed rendering.
+    /// * `primitive_type` - The type of primitive to draw.
     pub fn new_primitive(
         vertices: Vec<Vertex>,
         indices: Option<Vec<u32>>,
         primitive_type: PrimitiveType,
     ) -> Self {
-        DrawCommandBuilder {
+        Self {
             command: DrawCommand::Primitive {
                 vertices,
                 indices,
@@ -76,6 +106,11 @@ impl DrawCommandBuilder {
         }
     }
 
+    /// Sets the instance data to the draw command.
+    ///
+    /// # Arguments
+    ///
+    /// * `instance_data` - The instance data to add.
     pub fn with_instances(mut self, instance_data: Vec<InstanceData>) -> Self {
         match &mut self.command {
             DrawCommand::Mesh {
@@ -88,6 +123,11 @@ impl DrawCommandBuilder {
         self
     }
 
+    /// Sets the transformation matrix for the draw command.
+    ///
+    /// # Arguments
+    ///
+    /// * `transform` - The transformation matrix to apply.
     pub fn with_transform(mut self, transform: Mat4) -> Self {
         match &mut self.command {
             DrawCommand::Mesh { transform: t, .. } => *t = transform,
@@ -96,90 +136,54 @@ impl DrawCommandBuilder {
         self
     }
 
-    // TODO: reimplement
-    // pub fn with_color(mut self, color: Color) -> Self {
-    //     self.color = color;
-    //     self
-    // }
-
+    /// Builds the `DrawCommand`.
     pub fn build(self) -> DrawCommand {
         self.command
     }
 }
 
-// pub struct RenderBatch {
-//     pub mesh_id: usize,
-//     pub start_instance: usize,
-//     pub instance_count: usize,
-// }
+// TODO: Add batch calling back
 
+/// Manages a queue of draw commands for rendering.
+#[derive(Default)]
 pub struct RenderQueue {
-    // instances: Vec<InstanceData>,
-    // batches: Vec<RenderBatch>,
     pub draw_commands: Vec<DrawCommand>,
 }
 
 impl RenderQueue {
+    /// Creates a new, empty `RenderQueue`.
     pub fn new() -> Self {
-        RenderQueue {
-            // instances: Vec::new(),
-            // batches: Vec::new(),
-            draw_commands: Vec::new(),
-        }
+        debug!("Creating new RenderQueue");
+        Self::default()
     }
 
-    pub fn clear(&mut self) {
-        // self.instances.clear();
-        // self.batches.clear();
-        self.draw_commands.clear();
-    }
-
+    /// Adds a draw command to the queue.
+    ///
+    /// # Arguments
+    ///
+    /// * `command` - The draw command to add.
     pub fn add_draw_command(&mut self, command: DrawCommand) {
+        debug_trace!("Adding draw command to RenderQueue");
         self.draw_commands.push(command);
     }
 
+    /// Returns a slice of all draw commands in the queue.
     #[allow(dead_code)]
     pub fn get_draw_commands(&self) -> &[DrawCommand] {
+        trace!("Retrieving draw commands from RenderQueue");
         &self.draw_commands
     }
 
-    // pub fn add_instance(&mut self, mesh_id: usize, model_matrix: Mat4, color: Color) {
-    //     let instance_data = InstanceData {
-    //         model_matrix,
-    //         color,
-    //     };
-
-    //     if let Some(batch) = self.batches.last_mut() {
-    //         if batch.mesh_id == mesh_id {
-    //             batch.instance_count += 1;
-    //             self.instances.push(instance_data);
-    //             return;
-    //         }
-    //     }
-
-    //     self.batches.push(RenderBatch {
-    //         mesh_id,
-    //         start_instance: self.instances.len(),
-    //         instance_count: 1,
-    //     });
-    //     self.instances.push(instance_data);
-    // }
-
+    /// Sorts the batches in the render queue.
+    ///
+    /// This method is currently unimplemented and will panic if called.
     #[allow(dead_code)]
     pub fn sort_batches(&mut self) {
         // TODO: sort batches by material
         // TODO: sort batches front to back
         // TODO: sort batches back to front
-        unimplemented!()
+        unimplemented!("Batch sorting is not yet implemented")
     }
-
-    // pub fn get_batches(&self) -> &[RenderBatch] {
-    //     &self.batches
-    // }
-
-    // pub fn get_instances(&self) -> &[InstanceData] {
-    //     &self.instances
-    // }
 }
 
 #[cfg(test)]
@@ -211,18 +215,6 @@ mod tests {
             queue.draw_commands[0],
             DrawCommand::Mesh { mesh_id: 1, .. }
         ))
-    }
-
-    #[test]
-    fn test_render_queue_clear() {
-        let mut queue = RenderQueue::new();
-        queue.add_draw_command(DrawCommand::Mesh {
-            mesh_id: 1,
-            instance_data: None,
-            transform: Mat4::IDENTITY,
-        });
-        queue.clear();
-        assert!(queue.draw_commands.is_empty());
     }
 
     #[test]
