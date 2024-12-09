@@ -103,7 +103,7 @@ fn load_metal_shader_library(device: &Device) -> Result<metal::Library, Renderer
     // Create compilation options
     let shader_lib_path = std::env::var("METAL_SHADER_LIB").map_err(|e| {
         error!("Failed to get shader lib path: {e}");
-        RendererError::ShaderCompilationFailed(format!("Failed to get shader lib path: {}", e))
+        RendererError::ShaderCompilationFailed(format!("Failed to get shader lib path: {e}"))
     })?;
 
     device.new_library_with_file(shader_lib_path).map_err(|e| {

@@ -391,13 +391,13 @@ impl RendererSystem {
                                 .set_cursor_position(winit::dpi::PhysicalPosition::new(
                                     center_x, center_y,
                                 ))
-                                .unwrap()
+                                .unwrap();
                         }
                         WindowEvent::MouseWheel { delta, .. } => {
                             let mut renderer = self.renderer.borrow_mut();
                             match delta {
                                 MouseScrollDelta::LineDelta(_, y) => {
-                                    renderer.camera.process_mouse_scroll(y)
+                                    renderer.camera.process_mouse_scroll(y);
                                 }
                                 MouseScrollDelta::PixelDelta(position) => renderer
                                     .camera
@@ -409,7 +409,7 @@ impl RendererSystem {
 
                             // Draw objects
                             if let Err(e) = (self.render_callback)(&mut renderer) {
-                                eprintln!("Error in render callback: {:?}", e);
+                                eprintln!("Error in render callback: {e:?}");
                             }
                         }
                         _ => {}

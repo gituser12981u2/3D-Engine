@@ -39,7 +39,7 @@ pub struct MetalBackend {
 }
 
 impl MetalBackend {
-    /// Creates a new MetalBackend instance.
+    /// Creates a new `MetalBackend` instance.
     ///
     /// # Arguments
     ///
@@ -47,7 +47,7 @@ impl MetalBackend {
     ///
     /// # Returns
     ///
-    /// Returns a Result containing the MetalBackend instance or a RendererError.
+    /// Returns a Result containing the `MetalBackend` instance or a `RendererError`.
     pub fn new(window: &Window) -> Result<Self, RendererError> {
         let device = Device::system_default().ok_or(RendererError::DeviceNotFound)?;
         info!("Metal device initialized");
@@ -84,7 +84,7 @@ impl MetalBackend {
     ///
     /// # Returns
     ///
-    /// Returns a Result containing the MetalLayer or a RendererError.
+    /// Returns a Result containing the `MetalLayer` or a `RendererError`.
     fn create_metal_layer_for_window(
         window: &Window,
         device: &Device,
@@ -154,7 +154,7 @@ impl GraphicsBackend for MetalBackend {
     ///
     /// # Returns
     ///
-    /// Returns a Result indicating success or a RendererError.
+    /// Returns a Result indicating success or a `RendererError`.
     fn draw(&mut self, draw_command: BackendDrawCommand) -> Result<(), RendererError> {
         let descriptor = metal::RenderPassDescriptor::new();
 
@@ -284,7 +284,7 @@ impl GraphicsBackend for MetalBackend {
     ///
     /// # Returns
     ///
-    /// Returns a TextureId for the newly created texture.
+    /// Returns a `TextureId` for the newly created texture.
     fn create_texture(&mut self, descriptor: &TextureDescriptor) -> TextureId {
         debug!("Creating new texture");
         self.texture_manager.create_texture(descriptor)
@@ -304,7 +304,7 @@ impl GraphicsBackend for MetalBackend {
     ///
     /// # Returns
     ///
-    /// Returns a Result indicating success or a RendererError.
+    /// Returns a Result indicating success or a `RendererError`.
     fn update_texture(
         &mut self,
         id: TextureId,
@@ -368,7 +368,7 @@ pub struct RenderPass<'a> {
 }
 
 impl<'a> RenderPass<'a> {
-    /// Creates a new RenderPass instance.
+    /// Creates a new `RenderPass` instance.
     pub fn new(encoder: &'a RenderCommandEncoderRef, viewport: MTLViewport) -> Self {
         RenderPass { encoder, viewport }
     }

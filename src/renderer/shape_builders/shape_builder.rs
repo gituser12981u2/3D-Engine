@@ -32,7 +32,7 @@ pub struct ShapeData {
 }
 
 impl ShapeData {
-    /// Creates a new ShapeData with the given vertices and primitive type.
+    /// Creates a new `ShapeData` with the given vertices and primitive type.
     pub fn new(vertices: Vec<Vertex>, primitive_type: PrimitiveType) -> Self {
         Self {
             vertices,
@@ -106,7 +106,7 @@ pub struct PrimitiveBuilder {
 }
 
 impl PrimitiveBuilder {
-    /// Creates a new PrimitiveBuilder with the given vertices and primitive type.
+    /// Creates a new `PrimitiveBuilder` with the given vertices and primitive type.
     pub fn new(vertices: Vec<Vertex>, primitive_type: PrimitiveType) -> Self {
         Self {
             data: ShapeData::new(vertices, primitive_type),
@@ -187,7 +187,7 @@ pub struct MeshBuilder {
 }
 
 impl MeshBuilder {
-    /// Creates a new MeshBuilder with default values.
+    /// Creates a new `MeshBuilder` with default values.
     pub fn new(vertices: Vec<Vertex>, primitive_type: PrimitiveType) -> Self {
         Self {
             data: ShapeData::new(vertices, primitive_type),

@@ -35,7 +35,7 @@ pub struct BufferManager {
 }
 
 impl BufferManager {
-    /// Creates a new BufferManager with pre-allocated buffers.
+    /// Creates a new `BufferManager` with pre-allocated buffers.
     ///
     /// # Arguments
     ///
