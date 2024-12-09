@@ -167,7 +167,7 @@ impl Mesh {
     ///
     /// A new Mesh instance.
     pub fn new(mesh_builder: MeshBuilder) -> Self {
-        debug!("Creating new Mesh");
+        debug_trace!("Creating new Mesh");
         Mesh {
             vertices: mesh_builder.data.vertices,
             indices: mesh_builder.data.indices,
@@ -205,7 +205,7 @@ impl MeshStorage {
         let mesh = Mesh::new(mesh_builder);
         self.meshes.push(mesh);
         let index = self.meshes.len() - 1;
-        debug!("Added new mesh to MeshStorage at index {}", index);
+        debug_trace!("Added new mesh to MeshStorage at index {}", index);
         index
     }
 

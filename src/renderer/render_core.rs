@@ -67,6 +67,10 @@ impl Renderer {
     pub fn render(&mut self) -> Result<(), RendererError> {
         // TODO: sort batches in an efficient manner
         // TODO: Implement Frustum Culling
+
+        let render_start = Instant::now();
+        debug_trace!("Starting render at {:?}", render_start);
+
         let view_projection_matrix =
             self.camera.get_projection_matrix() * self.camera.get_view_matrix();
 
