@@ -122,6 +122,7 @@ jobs:
             # If it's not an alpha version, bump according to semantic versioning
             cargo bump $BUMP_TYPE
             NEW_VERSION=$(grep '^version = ' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
+
           fi
           echo "::set-output name=new_version::$NEW_VERSION"
       - name: Commit and push changes
