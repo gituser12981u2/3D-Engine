@@ -161,7 +161,7 @@ impl Mesh {
     ///
     /// # Arguments
     ///
-    /// * `mesh_builder` - The MeshBuilder containing mesh data.
+    /// * `mesh_builder` - The `MeshBuilder` containing mesh data.
     ///
     /// # Returns
     ///
@@ -182,11 +182,11 @@ pub struct MeshStorage {
 }
 
 impl MeshStorage {
-    /// Creates a new MeshStorage instance.
+    /// Creates a new `MeshStorage` instance.
     ///
     /// # Returns
     ///
-    /// A new MeshStorage instance.
+    /// A new `MeshStorage` instance.
     pub fn new() -> Self {
         debug!("Creating new MeshStorage");
         Self { meshes: Vec::new() }
@@ -196,7 +196,7 @@ impl MeshStorage {
     ///
     /// # Arguments
     ///
-    /// * `mesh_builder` - The MeshBuilder to create the mesh from.
+    /// * `mesh_builder` - The `MeshBuilder` to create the mesh from.
     ///
     /// # Returns
     ///
