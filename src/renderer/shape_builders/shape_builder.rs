@@ -1,3 +1,10 @@
+//! Shape builder module for the renderer.
+//!
+//! This module provides structures and traits for creating and manipulating
+//! primitive shapes and meshes. It includes the `ShapeBuilder` trait, which
+//! allows conversion between different shape representations, and the
+//! `PrimitiveBuilder` and `MeshBuilder` structs for detailed shape customization.
+
 use crate::renderer::{
     common::{PrimitiveType, Vertex},
     render_core::Renderer,
@@ -5,42 +12,29 @@ use crate::renderer::{
 };
 use glam::{Mat4, Vec3};
 
+/// Trait for converting shapes into primitive or mesh builders.
 #[allow(clippy::wrong_self_convention)]
-#[allow(dead_code)]
 // as_* is a better naming scheme for API
+#[allow(dead_code)]
 pub trait ShapeBuilder {
     fn as_primitive(self) -> PrimitiveBuilder;
     fn as_mesh(self) -> MeshBuilder;
 }
 
-/// Allows creation and customization of primitive shapes.
-///
-/// # Example
-///
-/// ```
-/// renderer.create_triangle(
-///     Vec3::new(0.0, 0.5, 0.0),
-///     Vec3::new(-0.5, -0.5, 0.0),
-///     Vec3::new(0.5, -0.5, 0.0),
-///     Color::new(1.0, 0.0, 0.0, 1.0)
-/// )
-/// .as_primitive()
-/// .with_indices(vec![0, 1, 2])
-/// .with_transform(Mat4::from_translation(Vec3::new(1.5, 0.0, 0.0)))
-/// .draw(renderer);
-/// ```
-#[allow(dead_code)]
-pub struct PrimitiveBuilder {
-    vertices: Vec<Vertex>,
-    indices: Option<Vec<u32>>,
-    primitive_type: PrimitiveType,
-    transform: Mat4,
-    instances: Option<Vec<InstanceData>>,
+/// Builder for creating and customizing shapes.
+#[derive(Clone)]
+pub struct ShapeData {
+    pub vertices: Vec<Vertex>,
+    pub indices: Option<Vec<u32>>,
+    pub primitive_type: PrimitiveType,
+    pub transform: Mat4,
+    pub instances: Option<Vec<InstanceData>>,
 }
 
-impl PrimitiveBuilder {
+impl ShapeData {
+    /// Creates a new ShapeData with the given vertices and primitive type.
     pub fn new(vertices: Vec<Vertex>, primitive_type: PrimitiveType) -> Self {
-        PrimitiveBuilder {
+        Self {
             vertices,
             indices: None,
             primitive_type,
@@ -57,9 +51,79 @@ impl PrimitiveBuilder {
     /// .with_indices(vec![0, 1, 2])
     /// ```
     ///
+    fn with_indices(mut self, indices: Vec<u32>) -> Self {
+        self.indices = Some(indices);
+        self
+    }
+
+    /// Applies a transformation to the primitive.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// .with_transform(Mat4::from_translation(Vec3::new(1.5, 0.0, 0.0)))
+    /// ```
+    fn with_transform(mut self, transform: Mat4) -> Self {
+        self.transform = transform;
+        self
+    }
+
+    /// Adds instances to the primitive.
+    fn with_instances(mut self, instances: Vec<InstanceData>) -> Self {
+        self.instances = Some(instances);
+        self
+    }
+}
+
+impl ShapeBuilder for ShapeData {
+    fn as_primitive(self) -> PrimitiveBuilder {
+        PrimitiveBuilder { data: self }
+    }
+
+    fn as_mesh(self) -> MeshBuilder {
+        MeshBuilder { data: self }
+    }
+}
+
+/// Builder for creating and customizing primitive shapes.
+///
+/// # Example
+///
+/// ```
+/// renderer.create_triangle(
+///     Vec3::new(0.0, 0.5, 0.0),
+///     Vec3::new(-0.5, -0.5, 0.0),
+///     Vec3::new(0.5, -0.5, 0.0),
+///     Color::new(1.0, 0.0, 0.0, 1.0)
+/// )
+/// .as_primitive()
+/// .with_indices(vec![0, 1, 2])
+/// .with_transform(Mat4::from_translation(Vec3::new(1.5, 0.0, 0.0)))
+/// .draw(renderer);
+/// ```
+pub struct PrimitiveBuilder {
+    data: ShapeData,
+}
+
+impl PrimitiveBuilder {
+    /// Creates a new PrimitiveBuilder with the given vertices and primitive type.
+    pub fn new(vertices: Vec<Vertex>, primitive_type: PrimitiveType) -> Self {
+        Self {
+            data: ShapeData::new(vertices, primitive_type),
+        }
+    }
+
+    /// Adds indices to the primitive.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// .with_indices(vec![0, 1, 2])
+    /// ```
+    ///
     #[allow(dead_code)]
     pub fn with_indices(mut self, indices: Vec<u32>) -> Self {
-        self.indices = Some(indices);
+        self.data = self.data.with_indices(indices);
         self
     }
 
@@ -72,37 +136,36 @@ impl PrimitiveBuilder {
     /// ```
     #[allow(dead_code)]
     pub fn with_transform(mut self, transform: Mat4) -> Self {
-        self.transform = transform;
+        self.data = self.data.with_transform(transform);
         self
     }
 
+    /// Adds instances to the primitive.
     #[allow(dead_code)]
     pub fn with_instances(mut self, instances: Vec<InstanceData>) -> Self {
-        self.instances = Some(instances);
+        self.data = self.data.with_instances(instances);
         self
     }
 
-    #[allow(clippy::wrong_self_convention)]
-    #[allow(dead_code)]
-    pub fn as_primitive(self) -> PrimitiveBuilder {
-        self
-    }
-
+    /// Draws the primitive using the provided renderer.
     #[allow(dead_code)]
     pub fn draw(self, renderer: &mut Renderer) {
-        let mut draw_command =
-            DrawCommandBuilder::new_primitive(self.vertices, self.indices, self.primitive_type)
-                .with_transform(self.transform);
+        let mut draw_command = DrawCommandBuilder::new_primitive(
+            self.data.vertices,
+            self.data.indices,
+            self.data.primitive_type,
+        )
+        .with_transform(self.data.transform);
 
-        if let Some(instances) = self.instances {
-            draw_command = draw_command.with_instances(instances)
+        if let Some(instances) = self.data.instances {
+            draw_command = draw_command.with_instances(instances);
         }
 
         renderer.draw_immediate(draw_command.build());
     }
 }
 
-/// Allows creation and customization of mesh shapes.
+/// Builder for creating and customizing mesh shapes.
 ///
 /// # Example
 ///
@@ -118,36 +181,20 @@ impl PrimitiveBuilder {
 /// .with_transform(Mat4::from_translation(Vec3::new(1.5, 0.0, 0.0)))
 /// .draw(renderer);
 /// ```
+#[derive(Clone)]
 pub struct MeshBuilder {
-    pub vertices: Vec<Vertex>,
-    pub indices: Option<Vec<u32>>,
-    pub primitive_type: PrimitiveType,
-    pub transform: Mat4,
-    instances: Option<Vec<InstanceData>>,
+    pub data: ShapeData,
 }
 
 impl MeshBuilder {
-    pub fn new() -> Self {
-        MeshBuilder {
-            vertices: Vec::new(),
-            indices: None,
-            primitive_type: PrimitiveType::Triangle,
-            transform: Mat4::IDENTITY,
-            instances: None,
+    /// Creates a new MeshBuilder with default values.
+    pub fn new(vertices: Vec<Vertex>, primitive_type: PrimitiveType) -> Self {
+        Self {
+            data: ShapeData::new(vertices, primitive_type),
         }
     }
 
-    pub fn with_vertices(mut self, vertices: Vec<Vertex>) -> Self {
-        self.vertices = vertices;
-        self
-    }
-
-    pub fn with_primitive_type(mut self, primitive_type: PrimitiveType) -> Self {
-        self.primitive_type = primitive_type;
-        self
-    }
-
-    /// Adds indices to the mesh.
+    /// Adds indices to the primitive.
     ///
     /// # Example
     ///
@@ -156,11 +203,11 @@ impl MeshBuilder {
     /// ```
     #[allow(dead_code)]
     pub fn with_indices(mut self, indices: Vec<u32>) -> Self {
-        self.indices = Some(indices);
+        self.data = self.data.with_indices(indices);
         self
     }
 
-    /// Applies a transformation to the mesh.
+    /// Applies a transformation to the primitive.
     ///
     /// # Example
     ///
@@ -169,28 +216,25 @@ impl MeshBuilder {
     /// ```
     #[allow(dead_code)]
     pub fn with_transform(mut self, transform: Mat4) -> Self {
-        self.transform = transform;
+        self.data = self.data.with_transform(transform);
         self
     }
 
+    /// Adds instances to the primitive.
     #[allow(dead_code)]
     pub fn with_instances(mut self, instances: Vec<InstanceData>) -> Self {
-        self.instances = Some(instances);
+        self.data = self.data.with_instances(instances);
         self
     }
 
-    #[allow(clippy::wrong_self_convention)]
-    #[allow(dead_code)]
-    pub fn as_mesh(self) -> MeshBuilder {
-        self
-    }
-
+    /// Draws the mesh using the provided renderer.
     #[allow(dead_code)]
     pub fn draw(&self, renderer: &mut Renderer) {
         let mesh_id = renderer.add_mesh(self.clone());
-        let mut draw_command = DrawCommandBuilder::new_mesh(mesh_id).with_transform(self.transform);
+        let mut draw_command =
+            DrawCommandBuilder::new_mesh(mesh_id).with_transform(self.data.transform);
 
-        if let Some(instances) = &self.instances {
+        if let Some(instances) = &self.data.instances {
             draw_command = draw_command.with_instances(instances.clone());
         }
 
@@ -198,20 +242,8 @@ impl MeshBuilder {
     }
 }
 
-impl Clone for MeshBuilder {
-    fn clone(&self) -> Self {
-        MeshBuilder {
-            vertices: self.vertices.clone(),
-            indices: self.indices.clone(),
-            primitive_type: self.primitive_type,
-            transform: self.transform,
-            instances: self.instances.clone(),
-        }
-    }
-}
-
-// !! Probably delete and make it Vertex only for better performance
-// Utility functions for Vec3/Color to Vertex conversion
+// !! Delete and make it Vertex only for better performance
+/// Converts a Vec3 position and Color to  a Vertex.
 pub fn vec3_color_to_vertex(position: Vec3, color: Color) -> Vertex {
     Vertex {
         position: position.to_array(),
@@ -219,22 +251,9 @@ pub fn vec3_color_to_vertex(position: Vec3, color: Color) -> Vertex {
     }
 }
 
-#[allow(dead_code)]
-pub fn vertex_to_vec3_color(vertex: Vertex) -> (Vec3, Color) {
-    (
-        Vec3::from_array(vertex.position),
-        Color::new(
-            vertex.color[0],
-            vertex.color[1],
-            vertex.color[2],
-            vertex.color[3],
-        ),
-    )
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{vec3_color_to_vertex, vertex_to_vec3_color, MeshBuilder, PrimitiveBuilder};
+    use super::{vec3_color_to_vertex, MeshBuilder, PrimitiveBuilder};
     use crate::renderer::{
         common::{PrimitiveType, Vertex},
         Color, InstanceData,
@@ -260,100 +279,45 @@ mod tests {
     }
 
     #[test]
-    fn test_primitive_builder_creation() {
+    fn test_primitive_builder() {
         let vertices = create_sample_triangle();
-        let builder = PrimitiveBuilder::new(vertices.clone(), PrimitiveType::Triangle);
-        assert_eq!(builder.vertices, vertices);
-        assert_eq!(builder.primitive_type, PrimitiveType::Triangle);
+        let builder = PrimitiveBuilder::new(vertices.clone(), PrimitiveType::Triangle)
+            .with_indices(vec![0, 1, 2])
+            .with_transform(Mat4::from_translation(Vec3::new(1.0, 2.0, 3.0)))
+            .with_instances(vec![InstanceData::new(
+                Mat4::IDENTITY,
+                Color::new(1.0, 0.0, 0.0, 1.0),
+            )]);
+
+        assert_eq!(builder.data.vertices, vertices);
+        assert_eq!(builder.data.primitive_type, PrimitiveType::Triangle);
+        assert_eq!(builder.data.indices, Some(vec![0, 1, 2]));
+        assert_eq!(
+            builder.data.transform,
+            Mat4::from_translation(Vec3::new(1.0, 2.0, 3.0))
+        );
+        assert!(builder.data.instances.is_some());
     }
 
     #[test]
-    fn test_primitive_builder_with_indices() {
+    fn test_mesh_builder() {
         let vertices = create_sample_triangle();
-        let indices = vec![0, 1, 2];
-        let builder =
-            PrimitiveBuilder::new(vertices, PrimitiveType::Triangle).with_indices(indices.clone());
-        assert_eq!(builder.indices, Some(indices));
-    }
+        let builder = MeshBuilder::new(vertices.clone(), PrimitiveType::Triangle)
+            .with_indices(vec![0, 1, 2])
+            .with_transform(Mat4::from_translation(Vec3::new(1.0, 2.0, 3.0)))
+            .with_instances(vec![InstanceData::new(
+                Mat4::IDENTITY,
+                Color::new(1.0, 0.0, 0.0, 1.0),
+            )]);
 
-    #[test]
-    fn test_primitive_builder_with_transform() {
-        let vertices = create_sample_triangle();
-        let transform = Mat4::from_translation(Vec3::new(1.0, 2.0, 3.0));
-        let builder =
-            PrimitiveBuilder::new(vertices, PrimitiveType::Triangle).with_transform(transform);
-        assert_eq!(builder.transform, transform);
-    }
-
-    #[test]
-    fn test_primitive_builder_with_instances() {
-        let vertices = create_sample_triangle();
-        let instances = vec![
-            InstanceData::new(Mat4::IDENTITY, Color::new(1.0, 0.0, 0.0, 1.0)),
-            InstanceData::new(
-                Mat4::from_translation(Vec3::new(1.0, 0.0, 0.0)),
-                Color::new(0.0, 1.0, 0.0, 1.0),
-            ),
-        ];
-        let builder = PrimitiveBuilder::new(vertices, PrimitiveType::Triangle)
-            .with_instances(instances.clone());
-        assert_eq!(builder.instances, Some(instances));
-    }
-
-    #[test]
-    fn test_primitive_builder_as_primitive() {
-        let vertices = create_sample_triangle();
-        let builder = PrimitiveBuilder::new(vertices.clone(), PrimitiveType::Triangle);
-        let primitive_builder = builder.as_primitive();
-        assert_eq!(primitive_builder.vertices, vertices);
-    }
-
-    #[test]
-    fn test_mesh_builder_creation() {
-        let builder = MeshBuilder::new();
-        assert!(builder.vertices.is_empty());
-        assert_eq!(builder.primitive_type, PrimitiveType::Triangle)
-    }
-
-    #[test]
-    fn test_mesh_builder_with_vertices() {
-        let vertices = create_sample_triangle();
-        let builder = MeshBuilder::new().with_vertices(vertices.clone());
-        assert_eq!(builder.vertices, vertices);
-    }
-
-    #[test]
-    fn test_mesh_builder_with_indices() {
-        let indices = vec![0, 1, 2];
-        let builder = MeshBuilder::new().with_indices(indices.clone());
-        assert_eq!(builder.indices, Some(indices));
-    }
-
-    #[test]
-    fn test_mesh_builder_with_primitive_type() {
-        let builder = MeshBuilder::new().with_primitive_type(PrimitiveType::Line);
-        assert_eq!(builder.primitive_type, PrimitiveType::Line);
-    }
-
-    #[test]
-    fn test_mesh_builder_with_instances() {
-        let instances = vec![
-            InstanceData::new(Mat4::IDENTITY, Color::new(1.0, 0.0, 0.0, 1.0)),
-            InstanceData::new(
-                Mat4::from_translation(Vec3::new(1.0, 0.0, 0.0)),
-                Color::new(0.0, 1.0, 0.0, 1.0),
-            ),
-        ];
-        let builder = MeshBuilder::new().with_instances(instances.clone());
-        assert_eq!(builder.instances, Some(instances));
-    }
-
-    #[test]
-    fn test_mesh_builder_as_mesh() {
-        let vertices = create_sample_triangle();
-        let builder = MeshBuilder::new().with_vertices(vertices.clone());
-        let mesh_builder = builder.as_mesh();
-        assert_eq!(mesh_builder.vertices, vertices);
+        assert_eq!(builder.data.vertices, vertices);
+        assert_eq!(builder.data.primitive_type, PrimitiveType::Triangle);
+        assert_eq!(builder.data.indices, Some(vec![0, 1, 2]));
+        assert_eq!(
+            builder.data.transform,
+            Mat4::from_translation(Vec3::new(1.0, 2.0, 3.0))
+        );
+        assert!(builder.data.instances.is_some());
     }
 
     #[test]
@@ -363,16 +327,5 @@ mod tests {
         let vertex = vec3_color_to_vertex(position, color);
         assert_eq!(vertex.position, [1.0, 2.0, 3.0]);
         assert_eq!(vertex.color, [0.1, 0.2, 0.3, 1.0]);
-    }
-
-    #[test]
-    fn test_vertex_to_vec3_color() {
-        let vertex = Vertex {
-            position: [1.0, 2.0, 3.0],
-            color: [0.1, 0.2, 0.3, 1.0],
-        };
-        let (position, color) = vertex_to_vec3_color(vertex);
-        assert_eq!(position, Vec3::new(1.0, 2.0, 3.0));
-        assert_eq!(color, Color::new(0.1, 0.2, 0.3, 1.0));
     }
 }

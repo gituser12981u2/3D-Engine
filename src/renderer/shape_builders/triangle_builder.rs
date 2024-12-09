@@ -1,3 +1,9 @@
+//! Triangle building module for the renderer.
+//!
+//! This module provides the `TriangleBuilder` struct for creating simple
+//! triangle primitives. It demonstrates how to implement the `ShapeBuilder`
+//! trait for custom shapes.
+
 use super::{
     shape_builder::{vec3_color_to_vertex, PrimitiveBuilder, ShapeBuilder},
     MeshBuilder,
@@ -8,7 +14,7 @@ use crate::renderer::{
 };
 use glam::Vec3;
 
-/// Allows creation of a simple triangle primitive
+/// Builder for creating a simple triangle primitive
 ///
 /// # Example
 ///
@@ -42,8 +48,30 @@ impl ShapeBuilder for TriangleBuilder {
     }
 
     fn as_mesh(self) -> MeshBuilder {
-        MeshBuilder::new()
-            .with_vertices(self.vertices.to_vec())
-            .with_primitive_type(PrimitiveType::Triangle)
+        MeshBuilder::new(self.vertices.to_vec(), PrimitiveType::Triangle)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TriangleBuilder;
+    use crate::renderer::Color;
+    use glam::Vec3;
+
+    #[test]
+    fn test_triangle_builder() {
+        let color = Color::new(1.0, 0.0, 0.0, 1.0);
+        let triangle = TriangleBuilder::new(
+            Vec3::new(0.0, 0.5, 0.0),
+            Vec3::new(-0.5, -0.5, 0.0),
+            Vec3::new(0.5, -0.5, 0.0),
+            color,
+        );
+
+        assert_eq!(triangle.vertices.len(), 3);
+        assert_eq!(triangle.vertices[0].position, [0.0, 0.5, 0.0]);
+        assert_eq!(triangle.vertices[1].position, [-0.5, -0.5, 0.0]);
+        assert_eq!(triangle.vertices[2].position, [0.5, -0.5, 0.0]);
+        // assert_eq!(triangle.vertices[0].color, color.as_array());
     }
 }

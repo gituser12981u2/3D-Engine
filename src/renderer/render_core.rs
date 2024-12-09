@@ -4,16 +4,18 @@ use super::{
     mesh::{Mesh, MeshStorage},
     render_queue::DrawCommand,
     shape_builders::{
-        shape_builder::{vec3_color_to_vertex, PrimitiveBuilder},
+        shape_builder::{vec3_color_to_vertex, ShapeData},
         MeshBuilder, TriangleBuilder,
     },
     Camera, Color, RendererError,
 };
-use crate::renderer::{
-    backend::metal::MetalBackend, camera::CameraMovement, render_queue::RenderQueue,
+use crate::{
+    debug_trace,
+    renderer::{backend::metal::MetalBackend, camera::CameraMovement, render_queue::RenderQueue},
 };
 use glam::Vec3;
-use std::{cell::RefCell, mem, rc::Rc};
+use log::info;
+use std::{cell::RefCell, mem, rc::Rc, time::Instant};
 use winit::{
     dpi::PhysicalSize,
     event::{Event, KeyEvent, MouseScrollDelta, WindowEvent},
@@ -41,12 +43,8 @@ impl Renderer {
     // Create a new Renderer with the specified window dimensions and title
     pub fn new(window: Window) -> Result<Self, RendererError> {
         let backend = MetalBackend::new(&window)?;
-        let device = backend.device().clone();
-
-        // Debug information
+        // let device = backend.device().clone();
         let size = window.inner_size();
-        let scale_factor = window.scale_factor();
-        println!("Window size: {:?}, Scale factor: {scale_factor}", size);
 
         let camera = Camera::new(
             Vec3::new(0.0, 0.0, 3.0),
@@ -58,7 +56,7 @@ impl Renderer {
 
         Ok(Renderer {
             backend,
-            mesh_storage: MeshStorage::new(device),
+            mesh_storage: MeshStorage::new(),
             render_queue: RenderQueue::new(),
             window,
             camera,
@@ -69,10 +67,16 @@ impl Renderer {
     pub fn render(&mut self) -> Result<(), RendererError> {
         // TODO: sort batches in an efficient manner
         // TODO: Implement Frustum Culling
+
+        let render_start = Instant::now();
+        debug_trace!("Starting render at {:?}", render_start);
+
         let view_projection_matrix =
             self.camera.get_projection_matrix() * self.camera.get_view_matrix();
 
+        // Implicitly clear the render queue by taking ownership of the draw commands
         let draw_commands = mem::take(&mut self.render_queue.draw_commands);
+        debug_trace!("Clearing RenderQueue at {:?}", Instant::now());
 
         for draw_command in draw_commands {
             match &draw_command {
@@ -89,7 +93,7 @@ impl Renderer {
                             view_projection_matrix,
                             model_matrix: *transform,
                         };
-                        self.backend.update_uniform_buffer(&uniforms)?;
+                        self.backend.update_uniform_buffer(&uniforms).unwrap();
                     } else {
                         return Err(RendererError::InvalidMeshId);
                     }
@@ -121,9 +125,7 @@ impl Renderer {
             self.backend.draw(backend_draw_command)?;
         }
 
-        // Clear the render queue after drawing
-        self.render_queue.clear();
-
+        debug_trace!("Finished render at {:?}", Instant::now());
         Ok(())
     }
 
@@ -259,22 +261,12 @@ impl Renderer {
         TriangleBuilder::new(v1, v2, v3, color)
     }
 
-    #[allow(dead_code)]
-    pub fn create_shape(&mut self, vertices: Vec<(Vec3, Color)>) -> PrimitiveBuilder {
+    pub fn create_shape(&mut self, vertices: Vec<(Vec3, Color)>) -> ShapeData {
         let vertices = vertices
             .into_iter()
-            .map(|(pos, color)| vec3_color_to_vertex(pos, color))
+            .map(|(position, color)| vec3_color_to_vertex(position, color))
             .collect();
-        PrimitiveBuilder::new(vertices, PrimitiveType::Triangle)
-    }
-
-    #[allow(dead_code)]
-    pub fn create_mesh(&mut self, vertices: Vec<(Vec3, Color)>) -> MeshBuilder {
-        let vertices = vertices
-            .into_iter()
-            .map(|(pos, color)| vec3_color_to_vertex(pos, color))
-            .collect();
-        MeshBuilder::new().with_vertices(vertices)
+        ShapeData::new(vertices, PrimitiveType::Triangle)
     }
 }
 
@@ -298,6 +290,7 @@ impl RendererSystem {
             .map_err(|e| RendererError::WindowCreationFailed(e.to_string()))?;
 
         let renderer = Rc::new(RefCell::new(Renderer::new(window)?));
+        info!("Initializing renderer system with {width}x{height} window");
 
         Ok(RendererSystem {
             renderer,
@@ -417,11 +410,6 @@ impl RendererSystem {
                             // Draw objects
                             if let Err(e) = (self.render_callback)(&mut renderer) {
                                 eprintln!("Error in render callback: {:?}", e);
-                            }
-
-                            // Present the frame
-                            if let Err(e) = renderer.render() {
-                                eprintln!("Error rendering: {:?}", e);
                             }
                         }
                         _ => {}
