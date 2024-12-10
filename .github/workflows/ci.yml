@@ -126,7 +126,7 @@ jobs:
 
           # Get current version
           CURRENT_VERSION=$(grep '^version = ' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
-
+          
           # Determine version bump type
           if echo "$COMMIT_MSG" | grep -qE '^BREAKING CHANGE:'; then
             BUMP_TYPE="major"
