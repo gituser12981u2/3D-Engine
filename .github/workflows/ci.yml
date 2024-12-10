@@ -97,8 +97,13 @@ jobs:
 
       - name: Configure Git
         run: |
+          # Get the GPG key ID
+          GPG_KEY_ID=$(gpg --list-secret-keys --keyid-format LONG | grep sec | awk '{print $2}' | cut -d'/' -f2)
+          
+          # Configure Git with the signing key
           git config --global user.name 'GitHub Action'
           git config --global user.email 'action@github.com'
+          git config --global user.signingkey "$GPG_KEY_ID"
           git config --global commit.gpgsign true
 
       - uses: actions-rs/toolchain@v1
