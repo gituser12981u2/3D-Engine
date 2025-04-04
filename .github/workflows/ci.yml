@@ -147,7 +147,6 @@ jobs:
             # If it's not an alpha version, bump according to semantic versioning
             cargo bump $BUMP_TYPE
             NEW_VERSION=$(grep '^version = ' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
-
           fi
 
           # Save version and branch name for later steps
@@ -157,7 +156,7 @@ jobs:
           
           # Commit and push changes with GPG signing
           git add Cargo.toml
-          git commit -S -m "chore: bump version to ${NEW_VERSION}"
+          git commit -m "chore: bump version to ${NEW_VERSION}"
           git push origin $BRANCH_NAME
 
       - name: Create Pull Request
