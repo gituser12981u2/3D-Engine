@@ -95,8 +95,8 @@ jobs:
       - name: Configure Git
         run: |
           # Configure Git with the signing key
-          git config --global user.name 'GitHub Action'
-          git config --global user.email 'action@github.com'
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
 
       - uses: actions-rs/toolchain@v1
         with:
