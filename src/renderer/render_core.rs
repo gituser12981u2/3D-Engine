@@ -74,24 +74,6 @@ impl Renderer {
         let view_projection_matrix =
             self.camera.get_projection_matrix() * self.camera.get_view_matrix();
 
-        self.backend
-            .update_uniform_buffer(&view_projection_matrix)
-            .unwrap();
-
-        // TODO: sort batches in an efficient manner
-        // TODO: Implement Frustum Culling
-    }
-
-    pub fn render(&mut self) -> Result<(), RendererError> {
-        // TODO: sort batches in an efficient manner
-        // TODO: Implement Frustum Culling
-
-        let render_start = Instant::now();
-        debug_trace!("Starting render at {:?}", render_start);
-
-        let view_projection_matrix =
-            self.camera.get_projection_matrix() * self.camera.get_view_matrix();
-
         // Implicitly clear the render queue by taking ownership of the draw commands
         let draw_commands = mem::take(&mut self.render_queue.draw_commands);
         debug_trace!("Clearing RenderQueue at {:?}", Instant::now());

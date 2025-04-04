@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [ master, develop ]
 
+permissions:
+  contents: write
+  pull-requests: write
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -159,7 +163,7 @@ jobs:
           # Save version and branch name for later steps
           echo "NEW_VERSION=${NEW_VERSION}" >> $GITHUB_ENV
           echo "BRANCH_NAME=${BRANCH_NAME}" >> $GITHUB_ENV
-          echo "::set-output name=new_version::${NEW_VERSION}"
+          echo "new_version=${NEW_VERSION}" >> $GITHUB_OUTPUT
           
           # Commit and push changes with GPG signing
           git add Cargo.toml
