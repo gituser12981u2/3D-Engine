@@ -110,7 +110,9 @@ impl MetalBackend {
                 );
 
                 unsafe {
+                    #[allow(unexpected_cfgs)]
                     let () = msg_send![ns_view, setLayer:layer.as_ref()];
+                    #[allow(unexpected_cfgs)]
                     let () = msg_send![ns_view, setWantsLayer:true];
                 }
 
@@ -392,6 +394,7 @@ impl<'a> RenderPass<'a> {
     pub fn set_wireframe_mode(&mut self, wireframe: bool) {
         unsafe {
             let raw_encoder = self.encoder.as_ptr();
+            #[allow(unexpected_cfgs)]
             let () = msg_send![raw_encoder, setTriangleFillMode:
             if wireframe {
                 metal::MTLTriangleFillMode::Lines
