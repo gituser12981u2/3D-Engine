@@ -92,15 +92,6 @@ jobs:
         with:
           fetch-depth: '0'
           
-      # Import GPG key
-      - name: Import GPG key
-        uses: crazy-max/ghaction-import-gpg@v5
-        with:
-          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
-          passphrase: ${{ secrets.GPG_PASSPHRASE }}
-          git_user_signingkey: true
-          git_commit_gpgsign: true
-
       - name: Configure Git
         run: |
           # Configure Git with the signing key
@@ -119,6 +110,8 @@ jobs:
 
       - name: Bump version
         id: bump_version
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Create timestamp for unique branch name
           TIMESTAMP=$(date +%s)
