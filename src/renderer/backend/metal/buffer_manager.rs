@@ -207,7 +207,7 @@ impl BufferManager {
     ///
     /// * `size` -  The required size for the depth texture.
     pub fn ensure_depth_texture(&mut self, size: CGSize) {
-        let update_needed = self.depth_texture.as_ref().map_or(true, |texture| {
+        let update_needed = self.depth_texture.as_ref().is_none_or(|texture| {
             texture.width() != size.width as u64 || texture.height() != size.height as u64
         });
 

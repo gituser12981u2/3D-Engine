@@ -144,11 +144,7 @@ fn create_shader_functions(
         .get_function("fragment_main", None)
         .map_err(|_| RendererError::ShaderFunctionNotFound("fragment_main".to_string()))?;
 
-    let function_names: Vec<String> = library
-        .function_names()
-        .into_iter()
-        .map(String::from)
-        .collect();
+    let function_names: Vec<String> = library.function_names().into_iter().collect();
     debug!(
         "Shaders loaded successfully. Available functions:\n - {}",
         function_names.join("\n - ")
