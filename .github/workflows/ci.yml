@@ -160,6 +160,25 @@ jobs:
           branch: version-bump-${{ env.NEW_VERSION }}
           base: master
 
+      - name: Generate Release Notes
+        id: release_notes
+        run: |
+          # Get all commits since the last tag
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "none")
+          
+          if [ "$LAST_TAG" = "none" ]; then
+            # If no previous tag exists, get all commits
+            COMMITS=$(git log --pretty=format:"- %s" | grep -v "^- Merge" | head -10)
+          else
+            # Get commits between the last tag and HEAD
+            COMMITS=$(git log ${LAST_TAG}..HEAD --pretty=format:"- %s" | grep -v "^- Merge" | head -10)
+          fi
+          
+          # Save commit messages as release notes
+          echo "RELEASE_NOTES<<EOF" >> $GITHUB_ENV
+          echo "$COMMITS" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
       - name: Create Release
         uses: actions/create-release@v1
         env:
@@ -169,7 +188,6 @@ jobs:
           release_name: Release ${{ steps.bump_version.outputs.new_version }}
           body: |
             Changes in this Release
-            - First Change
-            - Second Change
+            ${{ env.RELEASE_NOTES }}
           draft: false
           prerelease: ${{ contains(steps.bump_version.outputs.new_version, '-alpha') }}
