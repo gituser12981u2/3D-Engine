@@ -108,21 +108,12 @@ jobs:
         run: |
           cargo install cargo-edit --locked
 
-      - name: Bump version
-        id: bump_version
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Determine version bump
+        id: determine_bump
         run: |
-          # Create timestamp for unique branch name
-          TIMESTAMP=$(date +%s)
-          BRANCH_NAME="version-bump-${TIMESTAMP}"
-
-          # Create new branch for version bump
-          git checkout -b $BRANCH_NAME
-          
           # Parse the most recent commit message
           COMMIT_MSG=$(git log -1 --pretty=%B)
-
+          
           # Get current version
           CURRENT_VERSION=$(grep '^version = ' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
           
@@ -134,7 +125,13 @@ jobs:
           else
             BUMP_TYPE="patch"
           fi
+          
+          echo "BUMP_TYPE=${BUMP_TYPE}" >> $GITHUB_ENV
+          echo "CURRENT_VERSION=${CURRENT_VERSION}" >> $GITHUB_ENV
 
+      - name: Bump version
+        id: bump_version
+        run: |
           # Bump version in Cargo.toml
           if [[ $CURRENT_VERSION == *"-alpha"* ]]; then
             # If it's an alpha version, increment the alpha number
@@ -148,29 +145,20 @@ jobs:
             cargo bump $BUMP_TYPE
             NEW_VERSION=$(grep '^version = ' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
           fi
-
-          # Save version and branch name for later steps
+          
           echo "NEW_VERSION=${NEW_VERSION}" >> $GITHUB_ENV
-          echo "BRANCH_NAME=${BRANCH_NAME}" >> $GITHUB_ENV
           echo "new_version=${NEW_VERSION}" >> $GITHUB_OUTPUT
-
-          git add Cargo.toml
-          git add Cargo.lock
-          git commit -m "chore: bump version to ${{ env.NEW_VERSION }}"
-
-      - name: Push branch
-        run: |
-          git push origin $BRANCH_NAME
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v5
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore: bump version to ${{ env.NEW_VERSION }}"
           title: "chore: bump version to ${{ env.NEW_VERSION }}"
           body: |
             Automated version bump to ${{ env.NEW_VERSION }}
+          branch: version-bump-${{ env.NEW_VERSION }}
           base: master
-          branch: ${{ env.BRANCH_NAME }}
 
       - name: Create Release
         uses: actions/create-release@v1
