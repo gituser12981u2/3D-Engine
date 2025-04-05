@@ -15,17 +15,6 @@ use crate::renderer::{
 use glam::Vec3;
 
 /// Builder for creating a simple triangle primitive
-///
-/// # Example
-///
-/// ```
-/// let triangle = renderer.create_triangle(
-///     Vec3::new(0.0, 0.5, 0.0),  // Top vertex
-///     Vec3::new(-0.5, -0.5, 0.0), // Bottom-left vertex
-///     Vec3::new(0.5, -0.5, 0.0),  // Bottom-right vertex
-///     Color::new(1.0, 0.0, 0.0, 1.0) // Red color
-/// );
-/// ```
 pub struct TriangleBuilder {
     vertices: [Vertex; 3],
 }
@@ -72,6 +61,5 @@ mod tests {
         assert_eq!(triangle.vertices[0].position, [0.0, 0.5, 0.0]);
         assert_eq!(triangle.vertices[1].position, [-0.5, -0.5, 0.0]);
         assert_eq!(triangle.vertices[2].position, [0.5, -0.5, 0.0]);
-        // assert_eq!(triangle.vertices[0].color, color.as_array());
     }
 }

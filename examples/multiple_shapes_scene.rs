@@ -5,7 +5,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut renderer_system = RendererSystem::new(800, 600, "Metal Renderer")?;
 
     renderer_system.set_render_callback(move |r| {
-        // 1. Triangle using the high-level API
+        // 1. Create a triangle
         r.create_triangle(
             Vec3::new(-1.5, 0.5, 0.0),
             Vec3::new(-2.0, -0.5, 0.0),

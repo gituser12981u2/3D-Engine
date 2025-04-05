@@ -44,25 +44,12 @@ impl ShapeData {
     }
 
     /// Adds indices to the primitive.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// .with_indices(vec![0, 1, 2])
-    /// ```
-    ///
     fn with_indices(mut self, indices: Vec<u32>) -> Self {
         self.indices = Some(indices);
         self
     }
 
     /// Applies a transformation to the primitive.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// .with_transform(Mat4::from_translation(Vec3::new(1.5, 0.0, 0.0)))
-    /// ```
     fn with_transform(mut self, transform: Mat4) -> Self {
         self.transform = transform;
         self
@@ -86,21 +73,6 @@ impl ShapeBuilder for ShapeData {
 }
 
 /// Builder for creating and customizing primitive shapes.
-///
-/// # Example
-///
-/// ```
-/// renderer.create_triangle(
-///     Vec3::new(0.0, 0.5, 0.0),
-///     Vec3::new(-0.5, -0.5, 0.0),
-///     Vec3::new(0.5, -0.5, 0.0),
-///     Color::new(1.0, 0.0, 0.0, 1.0)
-/// )
-/// .as_primitive()
-/// .with_indices(vec![0, 1, 2])
-/// .with_transform(Mat4::from_translation(Vec3::new(1.5, 0.0, 0.0)))
-/// .draw(renderer);
-/// ```
 pub struct PrimitiveBuilder {
     data: ShapeData,
 }
@@ -114,13 +86,6 @@ impl PrimitiveBuilder {
     }
 
     /// Adds indices to the primitive.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// .with_indices(vec![0, 1, 2])
-    /// ```
-    ///
     #[allow(dead_code)]
     pub fn with_indices(mut self, indices: Vec<u32>) -> Self {
         self.data = self.data.with_indices(indices);
@@ -128,12 +93,6 @@ impl PrimitiveBuilder {
     }
 
     /// Applies a transformation to the primitive.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// .with_transform(Mat4::from_translation(Vec3::new(1.5, 0.0, 0.0)))
-    /// ```
     #[allow(dead_code)]
     pub fn with_transform(mut self, transform: Mat4) -> Self {
         self.data = self.data.with_transform(transform);
@@ -166,21 +125,6 @@ impl PrimitiveBuilder {
 }
 
 /// Builder for creating and customizing mesh shapes.
-///
-/// # Example
-///
-/// ```
-/// renderer.create_triangle(
-///     Vec3::new(0.0, 0.5, 0.0),
-///     Vec3::new(-0.5, -0.5, 0.0),
-///     Vec3::new(0.5, -0.5, 0.0),
-///     Color::new(1.0, 0.0, 0.0, 1.0)
-/// )
-/// .as_mesh()
-/// .with_indices(vec![0, 1, 2])
-/// .with_transform(Mat4::from_translation(Vec3::new(1.5, 0.0, 0.0)))
-/// .draw(renderer);
-/// ```
 #[derive(Clone)]
 pub struct MeshBuilder {
     pub data: ShapeData,
@@ -195,12 +139,6 @@ impl MeshBuilder {
     }
 
     /// Adds indices to the primitive.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// .with_indices(vec![0, 1, 2])
-    /// ```
     #[allow(dead_code)]
     pub fn with_indices(mut self, indices: Vec<u32>) -> Self {
         self.data = self.data.with_indices(indices);
@@ -208,12 +146,6 @@ impl MeshBuilder {
     }
 
     /// Applies a transformation to the primitive.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// .with_transform(Mat4::from_translation(Vec3::new(1.5, 0.0, 0.0)))
-    /// ```
     #[allow(dead_code)]
     pub fn with_transform(mut self, transform: Mat4) -> Self {
         self.data = self.data.with_transform(transform);
