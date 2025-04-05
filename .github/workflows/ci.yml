@@ -158,6 +158,10 @@ jobs:
           git add Cargo.lock
           git commit -m "chore: bump version to ${{ env.NEW_VERSION }}"
 
+      - name: Push branch
+        run: |
+          git push origin $BRANCH_NAME
+
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v5
         with:
