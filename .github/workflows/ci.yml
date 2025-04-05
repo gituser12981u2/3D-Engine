@@ -154,9 +154,15 @@ jobs:
           echo "BRANCH_NAME=${BRANCH_NAME}" >> $GITHUB_ENV
           echo "new_version=${NEW_VERSION}" >> $GITHUB_OUTPUT
           
-          # Commit and push changes with GPG signing
-          git add Cargo.toml
-          git commit -m "chore: bump version to ${NEW_VERSION}"
+      - name: Commit version change
+        uses: iarekylew00t/verified-bot-commit@v1
+        with:
+          message: "chore: bump version to ${{ env.NEW_VERSION }}"
+          files: |
+            Cargo.toml
+
+      - name: Push branch
+        run: |
           git push origin $BRANCH_NAME
 
       - name: Create Pull Request
