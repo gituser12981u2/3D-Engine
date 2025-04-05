@@ -24,42 +24,15 @@ This project is not a typical game engine, but an ambitious attempt to create a 
 
 ## Installation
 
-1. Clone the repository:
+Add this to the Cargo.toml:
 
-    ```bash
-    git clone https://github.com/gituser12981u2/3d-engine.git
-    cd 3D-engine
-    ```
-
-2. Build the project:
-
-    ```bash
-    cargo build
-    ```
-
-## Usage
-
-Here is a basic example of how to use the engine:
-
-```rust
-use 3D_engine::{Renderer, Color, RenderVector3};
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut renderer = Renderer::new(800, 600, "My 3D Scene")?;
-
-    renderer.set_render_callback(|r| {
-        r.draw_triangle(
-            RenderVector3::new(-0.5, -0.5, 0.0),
-            RenderVector3::new(0.5, -0.5, 0.0),
-            RenderVector3::new(0.0, 0.5, 0.0),
-            Color::new(1.0, 0.0, 0.0, 1.0)
-        )?;
-        Ok(())
-    });
-
-    renderer.run()
-}
+```bash
+cargo add render_engine
 ```
+
+## API Documentation
+
+Full documentation is available at [docs.rs/render_engine](https://docs.rs/render_engine)
 
 ## Contributing
 
