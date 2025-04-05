@@ -153,13 +153,10 @@ jobs:
           echo "NEW_VERSION=${NEW_VERSION}" >> $GITHUB_ENV
           echo "BRANCH_NAME=${BRANCH_NAME}" >> $GITHUB_ENV
           echo "new_version=${NEW_VERSION}" >> $GITHUB_OUTPUT
-          
-      - name: Commit version change
-        uses: iarekylew00t/verified-bot-commit@v1
-        with:
-          message: "chore: bump version to ${{ env.NEW_VERSION }}"
-          files: |
-            Cargo.toml
+
+          git add Cargo.toml
+          git add Cargo.lock
+          git commit -m "chore: bump version to ${{ env.NEW_VERSION }}"
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v5
