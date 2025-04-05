@@ -24,18 +24,15 @@ This project is not a typical game engine, but an ambitious attempt to create a 
 
 ## Installation
 
-1. Clone the repository:
+Add this to the Cargo.toml:
 
-    ```bash
-    git clone https://github.com/gituser12981u2/3d-engine.git
-    cd 3D-engine
-    ```
+```bash
+cargo add render_engine
+```
 
-2. Build the project:
+## API Documentation
 
-    ```bash
-    cargo build
-    ```
+Full documentation is available at [docs.rs/render_engine](https://docs.rs/render_engine)
 
 ## Contributing
 
