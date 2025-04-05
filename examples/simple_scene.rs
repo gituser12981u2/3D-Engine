@@ -1,7 +1,7 @@
 use env_logger::Builder;
-use game_engine::{Color, RendererSystem, ShapeBuilder};
 use glam::{Mat4, Quat, Vec3};
 use log::LevelFilter;
+use render_engine::{Color, RendererSystem, ShapeBuilder};
 use std::time::Instant;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

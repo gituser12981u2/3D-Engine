@@ -37,30 +37,6 @@ This project is not a typical game engine, but an ambitious attempt to create a 
     cargo build
     ```
 
-## Usage
-
-Here is a basic example of how to use the engine:
-
-```rust
-use 3D_engine::{Renderer, Color, RenderVector3};
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut renderer = Renderer::new(800, 600, "My 3D Scene")?;
-
-    renderer.set_render_callback(|r| {
-        r.draw_triangle(
-            RenderVector3::new(-0.5, -0.5, 0.0),
-            RenderVector3::new(0.5, -0.5, 0.0),
-            RenderVector3::new(0.0, 0.5, 0.0),
-            Color::new(1.0, 0.0, 0.0, 1.0)
-        )?;
-        Ok(())
-    });
-
-    renderer.run()
-}
-```
-
 ## Contributing
 
 Contributions are encouraged from scientists, developers, and enthusiasts. Please read the [Contributing Guide](CONTRIBUTING.md) for more details.

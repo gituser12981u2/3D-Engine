@@ -1,5 +1,5 @@
-use game_engine::{Color, RendererSystem, ShapeBuilder};
 use glam::{Mat4, Quat, Vec3};
+use render_engine::{Color, RendererSystem, ShapeBuilder};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut renderer_system = RendererSystem::new(800, 600, "Metal Renderer")?;

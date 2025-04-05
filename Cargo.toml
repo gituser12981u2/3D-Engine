@@ -1,7 +1,14 @@
 [package]
-name = "game_engine"
+name = "render_engine"
 version = "0.1.0-alpha.2"
 edition = "2021"
+description = "A Metal-based 3D rendering engine for macOS"
+license = "MIT"
+repository = "https://github.com/gituser12981u2/3d-engine.git"
+documentation = "https://docs.rs/render_engine"
+readme = "README.md"
+keywords = ["graphics", "rendering", "metal", "3d"]
+categories = ["graphics", "rendering", "game-engines"]
 build = "build.rs"
 
 [lib]
