@@ -4,6 +4,10 @@ version = "0.1.0-alpha.2"
 edition = "2021"
 build = "build.rs"
 
+[lib]
+path = "src/lib.rs"
+crate-type = ["rlib"]
+
 [dependencies]
 cocoa = "0.26.0"
 core-graphics = "0.23.2"
