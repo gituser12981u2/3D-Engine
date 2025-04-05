@@ -155,11 +155,9 @@ jobs:
           echo "new_version=${NEW_VERSION}" >> $GITHUB_OUTPUT
           
       - name: Commit version change
-        uses: iarekylew00t/verified-bot-commit@v1
-        with:
-          message: "chore: bump version to ${{ env.NEW_VERSION }}"
-          files: |
-            Cargo.toml
+        run: |
+          git add Cargo.toml
+          git commit -m "chore: bump version to ${{ env.NEW_VERSION }}"
 
       - name: Push branch
         run: |
