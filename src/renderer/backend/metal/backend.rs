@@ -7,7 +7,8 @@
 //! for handling rendering operations, buffer management, and pipeline state creation.
 
 use super::buffer_manager::BufferManager;
-use super::pipeline::{create_default_pipeline_descriptor, RenderPipelineCache};
+use super::pipeline::{create_default_pipeline_state, RenderPipelineCache};
+use super::shader_library::ShaderLoadOptions;
 use super::texture_manager::TextureManager;
 use crate::renderer::backend::GraphicsBackend;
 use crate::renderer::common::{BackendDrawCommand, RendererError, TextureId, Uniforms, Vertex};
@@ -48,20 +49,34 @@ impl MetalBackend {
     /// # Returns
     ///
     /// Returns a Result containing the `MetalBackend` instance or a `RendererError`.
+    #[allow(dead_code)]
     pub fn new(window: &Window) -> Result<Self, RendererError> {
+        Self::new_with_options(window, ShaderLoadOptions::default())
+    }
+
+    pub fn new_with_options(
+        window: &Window,
+        shader_options: ShaderLoadOptions,
+    ) -> Result<Self, RendererError> {
         let device = Device::system_default().ok_or(RendererError::DeviceNotFound)?;
         info!("Metal device initialized");
 
         let command_queue = device.new_command_queue();
-        let mut render_pipeline_cache = RenderPipelineCache::new(&device)?;
+        let layer = Self::create_metal_layer_for_window(window, &device)?;
+
+        // let mut render_pipeline_cache = RenderPipelineCache::new(&device, &shader_options)?;
+
+        // let (default_pipeline_descriptor, depth_stencil_state) =
+        //     create_default_pipeline_state(&device, &shader_options)?;
+
+        // Create pipeline and depth stencil state
+        let (render_pipeline_cache, depth_stencil_state) =
+            create_default_pipeline_state(&device, &shader_options)?;
+
+        // render_pipeline_cache.create_pipeline_state(&default_pipeline_descriptor)?;
+
         let buffer_manager = BufferManager::new(&device)?;
         let texture_manager = TextureManager::new(&device);
-
-        let (default_pipeline_descriptor, depth_stencil_state) =
-            create_default_pipeline_descriptor(&device)?;
-        render_pipeline_cache.create_pipeline_state(&default_pipeline_descriptor)?;
-
-        let layer = Self::create_metal_layer_for_window(window, &device)?;
 
         info!("MetalBackend initialized successfully");
         Ok(MetalBackend {

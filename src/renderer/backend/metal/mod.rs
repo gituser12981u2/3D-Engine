@@ -13,6 +13,8 @@
 mod backend;
 mod buffer_manager;
 mod pipeline;
+mod shader_library;
 mod texture_manager;
 
 pub use self::backend::MetalBackend;
+pub use self::shader_library::ShaderLoadOptions;

@@ -3,17 +3,18 @@
 //! This module provides functionality to create and manage Metal rendering pipelines,
 //! including pipeline state caching and default pipeline descriptor creation.
 
+use super::shader_library::{ShaderLibrary, ShaderLoadOptions};
 use crate::renderer::RendererError;
 use log::{debug, error, info, trace};
 use metal::{
-    DepthStencilDescriptor, DepthStencilState, Device, MTLDataType, MTLPixelFormat,
-    MTLVertexFormat, RenderPipelineDescriptor, RenderPipelineState,
+    DepthStencilDescriptor, DepthStencilState, Device, MTLPixelFormat, MTLVertexFormat,
+    RenderPipelineDescriptor, RenderPipelineState,
 };
-use std::ffi::c_void;
 
 /// Manages the caching of Metal render pipeline states.
 pub struct RenderPipelineCache {
     device: Device,
+    shader_library: ShaderLibrary,
     pipeline_state: Option<RenderPipelineState>,
 }
 
@@ -27,9 +28,12 @@ impl RenderPipelineCache {
     /// # Returns
     ///
     /// A `Result` containing the new `RenderPipelineCache` or a `RendererError`.
-    pub fn new(device: &Device) -> Result<Self, RendererError> {
+    pub fn new(device: &Device, shader_options: &ShaderLoadOptions) -> Result<Self, RendererError> {
+        let shader_library = ShaderLibrary::new(device, shader_options)?;
+
         Ok(RenderPipelineCache {
             device: device.clone(),
+            shader_library,
             pipeline_state: None,
         })
     }
@@ -48,6 +52,7 @@ impl RenderPipelineCache {
         descriptor: &RenderPipelineDescriptor,
     ) -> Result<(), RendererError> {
         debug!("Creating new pipeline state");
+
         let pipeline_state = self
             .device
             .new_render_pipeline_state(descriptor)
@@ -69,88 +74,37 @@ impl RenderPipelineCache {
     pub fn get_pipeline_state(&self) -> Option<&RenderPipelineState> {
         self.pipeline_state.as_ref()
     }
+
+    /// Returns a reference to the shader library
+    pub fn get_shader_library(&self) -> &ShaderLibrary {
+        &self.shader_library
+    }
 }
 
-/// Creates a default render pipeline descriptor and a depth stencil state.
-///
-/// # Arguments
-///
-/// * `device` - A reference to the Metal device.
-///
-/// # Returns
-///
-/// A `Result` containing a tuple of `(RenderPipelineDescriptor, DepthStencilState)` or a `RendererError`.
-pub fn create_default_pipeline_descriptor(
+pub fn create_default_pipeline_state(
     device: &Device,
-) -> Result<(RenderPipelineDescriptor, DepthStencilState), RendererError> {
-    debug!("Creating default pipeline descriptor");
+    shader_options: &ShaderLoadOptions,
+) -> Result<(RenderPipelineCache, DepthStencilState), RendererError> {
+    debug!("Creating default pipeline setup");
 
-    let library = load_metal_shader_library(device)?;
-    let (vertex_function, fragment_function) = create_shader_functions(&library)?;
+    let mut pipeline_cache = RenderPipelineCache::new(device, shader_options)?;
+
+    let shader_library = pipeline_cache.get_shader_library();
+
+    // Default setup: non-instanced, using vertex colors
+    let (vertex_function, fragment_function) = shader_library.get_shader_functions(false, true)?;
+
+    // Create a pipeline descriptor
     let pipeline_descriptor = create_pipeline_descriptor(&vertex_function, &fragment_function);
-    let depth_stencil_state = create_depth_stencil_state(device);
-
     setup_vertex_descriptor(&pipeline_descriptor);
 
-    // Create the render pipeline state
-    info!("Render pipeline state created");
-    Ok((pipeline_descriptor, depth_stencil_state))
-}
+    // Create the pipeline state
+    pipeline_cache.create_pipeline_state(&pipeline_descriptor)?;
 
-fn load_metal_shader_library(device: &Device) -> Result<metal::Library, RendererError> {
-    debug!("Loading pre-compiled shaders");
+    let depth_stencil_state = create_depth_stencil_state(device);
 
-    // Create compilation options
-    let shader_lib_path = std::env::var("METAL_SHADER_LIB").map_err(|e| {
-        error!("Failed to get shader lib path: {e}");
-        RendererError::ShaderCompilationFailed(format!("Failed to get shader lib path: {e}"))
-    })?;
-
-    device.new_library_with_file(shader_lib_path).map_err(|e| {
-        error!("Failed to load shader library: {e}");
-        RendererError::ShaderCompilationFailed(format!("Failed to load shader library: {e}"))
-    })
-}
-
-fn create_shader_functions(
-    library: &metal::Library,
-) -> Result<(metal::Function, metal::Function), RendererError> {
-    debug!("Creating shader functions");
-
-    // Create function constants for shader compilation
-    // These constants are used to configure the shader behavior
-    let function_constants = metal::FunctionConstantValues::new();
-
-    // Set function constants for instancing and vertex color usage
-    // These values correspond to the function_constant(0) and function_constant(1) in the shader code
-    let is_instanced = false;
-    let use_vertex_color = true;
-    function_constants.set_constant_value_at_index(
-        &is_instanced as *const bool as *const c_void,
-        MTLDataType::Bool,
-        0,
-    );
-    function_constants.set_constant_value_at_index(
-        &use_vertex_color as *const bool as *const c_void,
-        MTLDataType::Bool,
-        1,
-    );
-
-    // Compile the vertex and fragment shaders
-    let vertex_function = library
-        .get_function("vertex_main", Some(function_constants))
-        .map_err(|_| RendererError::ShaderFunctionNotFound("vertex_main".to_string()))?;
-    let fragment_function = library
-        .get_function("fragment_main", None)
-        .map_err(|_| RendererError::ShaderFunctionNotFound("fragment_main".to_string()))?;
-
-    let function_names: Vec<String> = library.function_names().into_iter().collect();
-    debug!(
-        "Shaders loaded successfully. Available functions:\n - {}",
-        function_names.join("\n - ")
-    );
-
-    Ok((vertex_function, fragment_function))
+    info!("Default render pipeline state created");
+    Ok((pipeline_cache, depth_stencil_state))
 }
 
 fn create_pipeline_descriptor(
@@ -230,13 +184,17 @@ fn setup_vertex_descriptor(pipeline_descriptor: &RenderPipelineDescriptor) {
 
 #[cfg(test)]
 mod tests {
-    use crate::renderer::backend::metal::pipeline::create_default_pipeline_descriptor;
     use metal::Device;
+
+    use crate::renderer::backend::metal::{
+        pipeline::create_default_pipeline_state, ShaderLoadOptions,
+    };
 
     #[test]
     fn test_create_default_pipeline_descriptor() {
         let device = Device::system_default().expect("No Metal device found");
-        let result = create_default_pipeline_descriptor(&device);
+        let shader_options = ShaderLoadOptions::default();
+        let result = create_default_pipeline_state(&device, &shader_options);
         assert!(
             result.is_ok(),
             "Failed to create render pipeline: {:?}",

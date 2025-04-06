@@ -11,7 +11,11 @@ use super::{
 };
 use crate::{
     debug_trace,
-    renderer::{backend::metal::MetalBackend, camera::CameraMovement, render_queue::RenderQueue},
+    renderer::{
+        backend::metal::{MetalBackend, ShaderLoadOptions},
+        camera::CameraMovement,
+        render_queue::RenderQueue,
+    },
 };
 use glam::Vec3;
 use log::info;
@@ -42,8 +46,14 @@ pub struct ObjectId(pub usize);
 impl Renderer {
     // Create a new Renderer with the specified window dimensions and title
     pub fn new(window: Window) -> Result<Self, RendererError> {
-        let backend = MetalBackend::new(&window)?;
-        // let device = backend.device().clone();
+        Self::new_with_options(window, ShaderLoadOptions::default())
+    }
+
+    pub fn new_with_options(
+        window: Window,
+        shader_options: ShaderLoadOptions,
+    ) -> Result<Self, RendererError> {
+        let backend = MetalBackend::new_with_options(&window, shader_options)?;
         let size = window.inner_size();
 
         let camera = Camera::new(
@@ -278,8 +288,33 @@ pub struct RendererSystem {
     render_callback: Box<RenderCallback>,
 }
 
+/// Configuration options for the renderer
+#[derive(Clone, Debug, Default)]
+pub struct RendererConfig {
+    /// Path to custom shader file (optional)
+    pub custom_shader_path: Option<String>,
+    /// Use runtime shader compilation instead of pre-compiled shaders
+    pub use_runtime_shader_compilation: bool,
+    // Add other high-level configuration options here as needed
+}
+
 impl RendererSystem {
     pub fn new(width: u32, height: u32, title: &str) -> Result<Self, RendererError> {
+        Self::new_with_config(width, height, title, RendererConfig::default())
+    }
+
+    pub fn new_with_config(
+        width: u32,
+        height: u32,
+        title: &str,
+        config: RendererConfig,
+    ) -> Result<Self, RendererError> {
+        let shader_options = ShaderLoadOptions {
+            shader_path: config.custom_shader_path,
+            use_runtime_compilation: config.use_runtime_shader_compilation,
+            // shader_path: todo!(),
+        };
+
         let event_loop =
             EventLoop::new().map_err(|e| RendererError::EventLoopError(e.to_string()))?;
 
@@ -289,7 +324,10 @@ impl RendererSystem {
             .build(&event_loop)
             .map_err(|e| RendererError::WindowCreationFailed(e.to_string()))?;
 
-        let renderer = Rc::new(RefCell::new(Renderer::new(window)?));
+        let renderer = Rc::new(RefCell::new(Renderer::new_with_options(
+            window,
+            shader_options,
+        )?));
         info!("Initializing renderer system with {width}x{height} window");
 
         Ok(RendererSystem {
