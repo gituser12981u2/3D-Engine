@@ -3,11 +3,12 @@ use super::{
     common::{BackendDrawCommand, IndexType, PrimitiveType, Uniforms, Vertex},
     mesh::{Mesh, MeshStorage},
     render_queue::DrawCommand,
+    scene_graph::{NodeId, SceneGraph},
     shape_builders::{
         shape_builder::{vec3_color_to_vertex, ShapeData},
         MeshBuilder, TriangleBuilder,
     },
-    Camera, Color, RendererError,
+    Camera, Color, RendererError, SceneObject,
 };
 use crate::{
     debug_trace,
@@ -17,7 +18,7 @@ use crate::{
         render_queue::RenderQueue,
     },
 };
-use glam::Vec3;
+use glam::{Mat4, Quat, Vec3};
 use log::info;
 use std::{cell::RefCell, mem, rc::Rc, time::Instant};
 use winit::{
@@ -32,9 +33,9 @@ pub struct Renderer {
     backend: MetalBackend,
     mesh_storage: MeshStorage,
     render_queue: RenderQueue,
-    // TODO: implement Material Manager and Scene Graph
+    // TODO: implement Material Manager
     // material_manager: MaterialManager,
-    // scene_graph: SceneGraph,
+    scene_graph: SceneGraph,
     window: Window,
     camera: Camera,
     last_frame_time: std::time::Instant,
@@ -68,6 +69,7 @@ impl Renderer {
             backend,
             mesh_storage: MeshStorage::new(),
             render_queue: RenderQueue::new(),
+            scene_graph: SceneGraph::new(),
             window,
             camera,
             last_frame_time: std::time::Instant::now(),
@@ -77,6 +79,11 @@ impl Renderer {
     pub fn render(&mut self) -> Result<(), RendererError> {
         // TODO: sort batches in an efficient manner
         // TODO: Implement Frustum Culling
+        self.render_queue.draw_commands.clear();
+
+        // Generate a draw commands from the scene graph
+        self.scene_graph
+            .generate_draw_commands(&mut self.render_queue, &self.mesh_storage)?;
 
         let render_start = Instant::now();
         debug_trace!("Starting render at {:?}", render_start);
@@ -86,7 +93,7 @@ impl Renderer {
 
         // Implicitly clear the render queue by taking ownership of the draw commands
         let draw_commands = mem::take(&mut self.render_queue.draw_commands);
-        debug_trace!("Clearing RenderQueue at {:?}", Instant::now());
+        debug_trace!("Processing {} draw commands", draw_commands.len());
 
         for draw_command in draw_commands {
             match &draw_command {
@@ -251,6 +258,61 @@ impl Renderer {
         self.render_queue.add_draw_command(draw_command);
     }
 
+    pub fn create_node(&mut self) -> NodeId {
+        self.scene_graph.create_node()
+    }
+
+    pub fn create_mesh_node(&mut self, mesh_id: usize) -> NodeId {
+        self.scene_graph.create_mesh_node(mesh_id)
+    }
+
+    pub fn set_node_parent(
+        &mut self,
+        node_id: NodeId,
+        parent_id: Option<NodeId>,
+    ) -> Result<(), RendererError> {
+        self.scene_graph.set_parent(node_id, parent_id)
+    }
+
+    pub fn set_node_transform(
+        &mut self,
+        node_id: NodeId,
+        position: Vec3,
+        rotation: Quat,
+        scale: Vec3,
+    ) -> Result<(), RendererError> {
+        self.scene_graph
+            .set_transform(node_id, position, rotation, scale)
+    }
+
+    pub fn set_node_mesh(
+        &mut self,
+        node_id: NodeId,
+        mesh_id: Option<usize>,
+    ) -> Result<(), RendererError> {
+        self.scene_graph.set_mesh(node_id, mesh_id)
+    }
+
+    pub fn set_node_color(&mut self, node_id: NodeId, color: Color) -> Result<(), RendererError> {
+        self.scene_graph.set_color(node_id, color)
+    }
+
+    pub fn set_node_visible(
+        &mut self,
+        node_id: NodeId,
+        visible: bool,
+    ) -> Result<(), RendererError> {
+        self.scene_graph.set_visible(node_id, visible)
+    }
+
+    pub fn remove_node(&mut self, node_id: NodeId, recursive: bool) -> Result<(), RendererError> {
+        self.scene_graph.remove_node(node_id, recursive)
+    }
+
+    pub fn get_node_world_transform(&self, node_id: NodeId) -> Result<Mat4, RendererError> {
+        self.scene_graph.get_world_transform(node_id)
+    }
+
     // TODO: implement resize in the backend
     pub fn resize(&mut self, new_size: PhysicalSize<u32>) {
         self.camera
@@ -278,6 +340,27 @@ impl Renderer {
             .collect();
         ShapeData::new(vertices, PrimitiveType::Triangle)
     }
+
+    /// Creates a complete object with mesh and adds it to the scene
+    pub fn create_object(
+        &mut self,
+        mesh_builder: MeshBuilder,
+        position: Vec3,
+        rotation: Quat,
+        scale: Vec3,
+    ) -> Result<SceneObject, RendererError> {
+        // Add the mesh to storage
+        let mesh_id = self.add_mesh(mesh_builder);
+
+        // Create a node for it
+        let node_id = self.create_mesh_node(mesh_id);
+
+        // Set its transform
+        self.set_node_transform(node_id, position, rotation, scale)?;
+
+        // Return a SceneObject wrapping the node
+        Ok(SceneObject::from_node_id(node_id))
+    }
 }
 
 pub type RenderCallback = dyn Fn(&mut Renderer) -> Result<(), RendererError>;
@@ -285,7 +368,7 @@ pub type RenderCallback = dyn Fn(&mut Renderer) -> Result<(), RendererError>;
 pub struct RendererSystem {
     renderer: Rc<RefCell<Renderer>>,
     event_loop: EventLoop<()>,
-    render_callback: Box<RenderCallback>,
+    render_callback: Box<dyn FnMut(&mut Renderer) -> Result<(), RendererError>>,
 }
 
 /// Configuration options for the renderer
@@ -339,12 +422,12 @@ impl RendererSystem {
 
     pub fn set_render_callback<F>(&mut self, callback: F)
     where
-        F: Fn(&mut Renderer) -> Result<(), RendererError> + 'static,
+        F: FnMut(&mut Renderer) -> Result<(), RendererError> + 'static,
     {
         self.render_callback = Box::new(callback);
     }
 
-    pub fn run(self) -> Result<(), RendererError> {
+    pub fn run(mut self) -> Result<(), RendererError> {
         let window_size = self.renderer.borrow().window.inner_size();
         let center_x = window_size.width as f64 / 2.0;
         let center_y = window_size.height as f64 / 2.0;
